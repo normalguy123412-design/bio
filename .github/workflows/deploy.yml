@@ -1,0 +1,62 @@
+# Страница выкладывается в «Pages» из папки `out/`, которую Next собирает
+# статическим экспортом (`next build` при `output: "export"`). Сборка идёт в CI
+# на Node.js, поэтому на машине разработчика нужен только Node.js.
+
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  # Запуск вручную: «Actions» → «Deploy to GitHub Pages» → «Run workflow».
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Параллельные запуски не нужны: каждый отменяет предыдущий, чтобы не
+# публиковать устаревшую сборку после свежей.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Установить зависимости
+        run: npm ci
+
+      - name: Собрать статический сайт
+        run: npm run build
+        env:
+          # Сайт лежит по адресу https://<user>.github.io/<repo>/, поэтому все
+          # пути внутри собранных файлов должны начинаться с /<repo>.
+          NEXT_PUBLIC_BASE_PATH: /${{ github.event.repository.name }}
+
+      - name: Настроить Pages
+        uses: actions/configure-pages@v5
+
+      - name: Выложить сборку в Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Опубликовать
+        id: deployment
+        uses: actions/deploy-pages@v4
