@@ -5,13 +5,12 @@ import { AnimatePresence, motion } from "motion/react"
 import { MacOsDock, type DockEntry } from "@/components/ui/mac-os-dock"
 import { ICONS } from "@/components/icons"
 import { MusicWidget } from "@/components/music-widget"
-import { ActivityRoom, LinksRoom, ProfileRoom } from "@/components/rooms"
+import { ActivityRoom, ProfileRoom } from "@/components/rooms"
 import { sections } from "@/lib/profile"
 
 /** Что показывать в каждом отделе. */
 const ROOMS: Record<string, React.ReactNode> = {
   profile: <ProfileRoom />,
-  links: <LinksRoom />,
   activity: <ActivityRoom />,
 }
 

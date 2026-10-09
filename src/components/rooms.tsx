@@ -4,7 +4,9 @@ import { MapPinIcon } from "lucide-react"
 import ContributionSkyline, {
   type ContributionDay,
 } from "@/components/ui/contribution-skyline"
-import { LinkList } from "@/components/link-list"
+import { TextShimmer } from "@/components/ui/text-shimmer"
+import { SocialButtons } from "@/components/social-buttons"
+import { ViewCounter } from "@/components/view-counter"
 import { links, profile } from "@/lib/profile"
 import contributions from "@/data/contributions.json"
 
@@ -51,7 +53,12 @@ function Banner() {
   )
 }
 
-/** Отдел «Профиль»: баннер, аватар, имя, роль, био, локация. */
+/**
+ * Отдел «Профиль».
+ *
+ * Здесь же внизу карточки живут кнопки ссылок — раньше для них был отдельный
+ * отдел и до них ещё надо было добраться переключением.
+ */
 export function ProfileRoom() {
   return (
     <Room id="profile" title="Профиль">
@@ -59,46 +66,55 @@ export function ProfileRoom() {
         <Banner />
 
         <div className="px-5 pb-6 sm:px-6">
-          <div className="from-sky-400 to-emerald-400 -mt-10 grid size-20 place-items-center rounded-full border-4 border-card bg-gradient-to-br text-2xl font-bold text-black">
-            {profile.avatar}
+          {/* Аватар с мягким свечением и медленным поворотом кольца. */}
+          <div className="relative -mt-10 inline-block">
+            <div
+              aria-hidden
+              className="from-sky-400 to-emerald-400 animate-spin-slow absolute -inset-1.5 rounded-full bg-gradient-to-tr opacity-40 blur-md"
+            />
+            <div className="from-sky-400 to-emerald-400 relative grid size-20 place-items-center rounded-full border-4 border-card bg-gradient-to-br text-2xl font-bold text-black">
+              {profile.avatar}
+            </div>
           </div>
 
-          <h1 className="font-heading mt-4 text-4xl font-bold tracking-tight text-balance sm:text-5xl">
+          {/* По имени и роли бежит светлая волна. */}
+          <TextShimmer
+            as="h1"
+            duration={3}
+            className="font-heading mt-4 text-4xl font-bold tracking-tight text-balance sm:text-5xl"
+          >
             {profile.name}
-          </h1>
+          </TextShimmer>
 
-          <p className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
-            {profile.roles.map((role, index) => (
-              <span key={role} className="flex items-center gap-2">
-                {index > 0 ? (
-                  <span aria-hidden className="text-sky-400">
-                    ·
-                  </span>
-                ) : null}
-                {role}
-              </span>
-            ))}
-          </p>
+          <TextShimmer
+            as="p"
+            duration={3.6}
+            spread={1}
+            className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.95rem]"
+          >
+            {profile.roles.join("  ·  ")}
+          </TextShimmer>
 
           <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed italic">
             {profile.bio}
           </p>
 
-          <p className="text-muted-foreground mt-4 flex items-center gap-1.5 text-sm">
-            <MapPinIcon className="size-4" />
-            {profile.location}
-          </p>
+          <div className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+            <span className="flex items-center gap-1.5">
+              <MapPinIcon className="size-4" />
+              {profile.location}
+            </span>
+            <ViewCounter />
+          </div>
+
+          <div className="border-border mt-6 border-t pt-6">
+            <p className="text-muted-foreground mb-3 text-xs tracking-[0.08em] uppercase">
+              Написать
+            </p>
+            <SocialButtons links={links} />
+          </div>
         </div>
       </article>
-    </Room>
-  )
-}
-
-/** Отдел «Ссылки». */
-export function LinksRoom() {
-  return (
-    <Room id="links" title="Ссылки">
-      <LinkList links={links} />
     </Room>
   )
 }

@@ -8,11 +8,44 @@ import {
   PauseIcon,
   PlayIcon,
   RotateCcwIcon,
+  Volume1Icon,
   Volume2Icon,
   VolumeXIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
 import { track } from "@/lib/profile"
+
+/**
+ * НАСТРОЙКИ, КОТОРЫЕ ПЕРЕЖИВАЮТ ПЕРЕЗАГРУЗКУ.
+ *
+ * Всё в localStorage: громкость, отключение звука и раскрытое состояние
+ * панели. Без этого при каждой перезагрузке звук возвращался к половине, и
+ * настройку приходилось бы подбирать заново.
+ *
+ * Запись обёрнута в try/catch: в приватном режиме Safari и при запрете
+ * хранилища localStorage бросает исключение, и это не повод ломать плеер.
+ */
+const STORE = {
+  volume: "bio:volume",
+  muted: "bio:muted",
+  open: "bio:open",
+} as const
+
+function readStored(key: string, fallback: string | null) {
+  try {
+    return window.localStorage.getItem(key) ?? fallback
+  } catch {
+    return fallback
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // хранилище недоступно — настройка просто не переживёт перезагрузку
+  }
+}
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return "0:00"
@@ -20,12 +53,18 @@ function formatTime(seconds: number) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`
 }
 
+/** Градиент заливки ползунка: пройдено одним цветом, остальное — приглушённое. */
+function trackStyle(ratio: number, idle: string) {
+  const stop = `${(Math.min(1, Math.max(0, ratio)) * 100).toFixed(2)}%`
+  return {
+    background: `linear-gradient(90deg, #38bdf8 0%, #22d3ee ${stop}, ${idle} ${stop})`,
+  }
+}
+
 /**
  * МУЗЫКАЛЬНЫЙ ВИДЖЕТ — круглый значок звука в углу.
  *
- * Панель музыки вынесена из разделов: раньше она была отдельным разделом,
- * и до неё ещё надо было добраться переключением. Теперь значок висит в
- * углу поверх всего и открывает плеер поверх любого раздела.
+ * Панель висит поверх любого отдела и ни с чем не пересекается.
  *
  * Автозапуск. Браузер не даёт включать звук без действия пользователя, и
  * обойти это нельзя — можно только не мешать пользователю. Поэтому:
@@ -33,8 +72,7 @@ function formatTime(seconds: number) {
  *   2) если браузер отказал, повторяем попытку при первом же нажатии в любом
  *      месте — то есть музыка начинает играть, как только человек что-то
  *      сделал;
- *   3) если и это не вышло, на значке остаётся пульсирующее кольцо —
- *      видно, что звук выключен и его надо включить вручную.
+ *   3) если и это не вышло, на значке остаётся пульсирующее кольцо.
  */
 export function MusicWidget() {
   const audioRef = React.useRef<HTMLAudioElement>(null)
@@ -43,6 +81,7 @@ export function MusicWidget() {
   const [playing, setPlaying] = React.useState(false)
   const [blocked, setBlocked] = React.useState(false)
   const [muted, setMuted] = React.useState(false)
+  const [volume, setVolume] = React.useState(0.5)
   const [current, setCurrent] = React.useState(0)
   const [duration, setDuration] = React.useState(0)
   const [coverFailed, setCoverFailed] = React.useState(false)
@@ -51,11 +90,6 @@ export function MusicWidget() {
   const levels = React.useRef<Float32Array | null>(null)
   const started = React.useRef(false)
   const frame = React.useRef(0)
-
-  /** Заливка ползунка. */
-  const paint = React.useCallback((ratio: number) => {
-    document.documentElement.style.setProperty("--played", `${(ratio * 100).toFixed(2)}%`)
-  }, [])
 
   /** Ровная линия в покое и на любом отказе от визуализатора. */
   const drawIdle = React.useCallback(() => {
@@ -88,7 +122,7 @@ export function MusicWidget() {
     node.getByteFrequencyData(data)
 
     const bars = 48
-    const step2 = width / bars
+    const gap = width / bars
     const perBar = Math.floor(data.length / bars)
     const level = levels.current ?? (levels.current = new Float32Array(bars))
 
@@ -105,7 +139,7 @@ export function MusicWidget() {
       // Смягчаем, иначе столбики дёргаются на каждом кадре.
       level[i] = level[i] * 0.65 + (peak / 255) * 0.35
       const barHeight = Math.max(3, level[i] * height)
-      ctx.fillRect(i * step2, (height - barHeight) / 2, step2 * 0.55, barHeight)
+      ctx.fillRect(i * gap, (height - barHeight) / 2, gap * 0.55, barHeight)
     }
 
     frame.current = requestAnimationFrame(step)
@@ -116,8 +150,7 @@ export function MusicWidget() {
    *
    * `createMediaElementSource` навсегда переводит звук в Web Audio, поэтому
    * подключать его можно только на работающем контексте: иначе плеер играл
-   * бы в тишине навсегда. Если не вышло — остаётся ровная линия, музыка
-   * играет обычным способом.
+   * бы в тишине навсегда.
    */
   const startVisualizer = React.useCallback(async () => {
     if (started.current) return
@@ -165,11 +198,24 @@ export function MusicWidget() {
     }
   }, [])
 
-  // Попытка при открытии страницы.
+  // Восстановление настроек и первая попытка автозапуска.
   React.useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
-    audio.volume = 0.5
+
+    const storedVolume = Number(readStored(STORE.volume, "0.5"))
+    const storedMuted = readStored(STORE.muted, "0") === "1"
+
+    const restored = Number.isFinite(storedVolume)
+      ? Math.min(1, Math.max(0, storedVolume))
+      : 0.5
+
+    audio.volume = restored
+    audio.muted = storedMuted
+    setVolume(restored)
+    setMuted(storedMuted)
+    setOpen(readStored(STORE.open, "0") === "1")
+
     drawIdle()
 
     let cancelled = false
@@ -186,8 +232,7 @@ export function MusicWidget() {
    * Второй шанс — первое же действие пользователя.
    *
    * Именно здесь автозапуск обычно и срабатывает: браузер снимает запрет
-   * после первого клика, и музыка начинает играть сама, как только человек
-   * начал пользоваться страницей.
+   * после первого клика.
    */
   React.useEffect(() => {
     const retry = async () => {
@@ -215,14 +260,10 @@ export function MusicWidget() {
     if (!audio) return
 
     const onLoaded = () => setDuration(audio.duration)
-    const onTime = () => {
-      setCurrent(audio.currentTime)
-      if (audio.duration) paint(audio.currentTime / audio.duration)
-    }
+    const onTime = () => setCurrent(audio.currentTime)
     const onEnded = () => {
       setPlaying(false)
       setCurrent(0)
-      paint(0)
     }
     const onError = () => setBlocked(true)
 
@@ -238,7 +279,7 @@ export function MusicWidget() {
       audio.removeEventListener("ended", onEnded)
       audio.removeEventListener("error", onError)
     }
-  }, [paint])
+  }, [])
 
   const toggle = async () => {
     const audio = audioRef.current
@@ -255,11 +296,25 @@ export function MusicWidget() {
     }
   }
 
+  const setVolumeAndSave = (value: number) => {
+    const next = Math.min(1, Math.max(0, value))
+    const audio = audioRef.current
+    if (audio) audio.volume = next
+    setVolume(next)
+    writeStored(STORE.volume, String(next))
+  }
+
   const toggleMute = () => {
     const audio = audioRef.current
     if (!audio) return
     audio.muted = !audio.muted
     setMuted(audio.muted)
+    writeStored(STORE.muted, audio.muted ? "1" : "0")
+  }
+
+  const collapse = () => {
+    setOpen(false)
+    writeStored(STORE.open, "0")
   }
 
   const restart = async () => {
@@ -267,9 +322,12 @@ export function MusicWidget() {
     if (!audio) return
     audio.currentTime = 0
     setCurrent(0)
-    paint(0)
     if (audio.paused) await toggle()
   }
+
+  /** Значок громкости отражает реальный уровень, а не только факт отключения. */
+  const VolumeIcon =
+    muted || volume === 0 ? VolumeXIcon : volume < 0.5 ? Volume1Icon : Volume2Icon
 
   return (
     <>
@@ -284,18 +342,12 @@ export function MusicWidget() {
       {/* Значок в углу: остаётся на месте, пока панель не открыта. */}
       <button
         type="button"
-        onClick={() => (open ? setOpen(false) : void toggle())}
+        onClick={() => (open ? collapse() : void toggle())}
         aria-label={open ? "Свернуть плеер" : "Открыть плеер"}
         aria-expanded={open}
         className="border-border bg-background/80 fixed right-5 bottom-5 z-50 grid size-12 place-items-center rounded-full border shadow-lg backdrop-blur-lg transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:outline-none"
       >
-        {open ? (
-          <ChevronDownIcon className="size-5" />
-        ) : muted ? (
-          <VolumeXIcon className="size-5" />
-        ) : (
-          <Volume2Icon className="size-5" />
-        )}
+        {open ? <ChevronDownIcon className="size-5" /> : <VolumeIcon className="size-5" />}
 
         {/* Кольцо напоминает: браузер не дал включить звук сам. */}
         {blocked ? (
@@ -324,7 +376,7 @@ export function MusicWidget() {
                   <MusicIcon className="size-6 text-foreground/70" />
                 </div>
               ) : (
-                /* Обложка не обязательна: если файла нет, показываем заглушку. */
+                /* Обложка не обязательна: если файла нет, рисуем заглушку. */
                 <Image
                   src={track.cover}
                   alt=""
@@ -349,11 +401,7 @@ export function MusicWidget() {
                 aria-label={muted ? "Включить звук" : "Выключить звук"}
                 className="text-muted-foreground hover:text-foreground grid size-8 shrink-0 place-items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
               >
-                {muted ? (
-                  <VolumeXIcon className="size-4" />
-                ) : (
-                  <Volume2Icon className="size-4" />
-                )}
+                <VolumeIcon className="size-4" />
               </button>
             </div>
 
@@ -392,12 +440,14 @@ export function MusicWidget() {
                 onChange={(event) => {
                   const audio = audioRef.current
                   if (!audio || !duration) return
-                  const ratio = Number(event.target.value) / 100
-                  audio.currentTime = ratio * duration
-                  paint(ratio)
+                  audio.currentTime = (Number(event.target.value) / 100) * duration
                 }}
                 aria-label="Перемотка трека"
-                className="bg-muted h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full accent-sky-400 focus-visible:ring-2 focus-visible:outline-none"
+                style={trackStyle(
+                  duration ? current / duration : 0,
+                  "oklch(0.269 0 0)"
+                )}
+                className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full focus-visible:ring-2 focus-visible:outline-none"
               />
 
               <span className="text-muted-foreground font-mono text-xs tabular-nums">
@@ -412,6 +462,25 @@ export function MusicWidget() {
               >
                 <RotateCcwIcon className="size-3.5" />
               </button>
+            </div>
+
+            {/* Громкость. Значение сохраняется и переживает перезагрузку. */}
+            <div className="mt-3 flex items-center gap-3">
+              <VolumeIcon className="text-muted-foreground size-4 shrink-0" />
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.01}
+                value={volume}
+                onChange={(event) => setVolumeAndSave(Number(event.target.value))}
+                aria-label="Громкость"
+                style={trackStyle(volume, "oklch(0.269 0 0)")}
+                className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full focus-visible:ring-2 focus-visible:outline-none"
+              />
+              <span className="text-muted-foreground w-9 shrink-0 text-right font-mono text-xs tabular-nums">
+                {Math.round(volume * 100)}%
+              </span>
             </div>
 
             {blocked ? (

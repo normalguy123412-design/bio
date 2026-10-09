@@ -149,6 +149,16 @@
 
 @theme inline {
   --animate-float: float 9s ease-in-out infinite;
+
+  /*
+    Кадры `@keyframes spin` и `ping` объявлены ниже, но одной рамки с
+    ними мало: чтобы появились классы `animate-spin` и `animate-ping`,
+    анимации должны быть зарегистрированы в теме. Без этого Tailwind
+    считает класс неизвестным и молча его не выводит — а свечение вокруг
+    аватара просто не крутилось бы.
+  */
+  --animate-spin: spin 1s linear infinite;
+  --animate-spin-slow: spin 14s linear infinite;
 }
 
 
