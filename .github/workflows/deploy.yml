@@ -44,6 +44,10 @@ jobs:
 
       - name: Настроить Pages
         uses: actions/configure-pages@v5
+        with:
+          # `enablement` включает Pages в самом репозитории. Без него шаг
+          # падает на новом репозитории, где Pages ещё не был активирован.
+          enablement: true
 
       - name: Выложить сборку в Pages
         uses: actions/upload-pages-artifact@v3
