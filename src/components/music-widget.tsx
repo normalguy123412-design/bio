@@ -13,7 +13,7 @@ import {
   VolumeXIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { emojis, profile, track } from "@/lib/profile"
+import { emojis, track } from "@/lib/profile"
 
 /**
  * НАСТРОЙКИ, КОТОРЫЕ ПЕРЕЖИВАЮТ ПЕРЕЗАГРУЗКУ.
@@ -323,23 +323,24 @@ export function MusicWidget() {
       {/*
         Заставка. Браузер всё равно не пускает музыку без действия
         пользователя, поэтому вместо тихих попыток включить трек самому
-        показывается честное предложение нажать. Одно нажатие в любом месте
-        экрана запускает музыку и убирает заставку.
+        показывается предложение нажать. Одно нажатие в любом месте экрана
+        запускает музыку и убирает заставку.
 
-        Затемнение намеренно слабое: раньше здесь стоял почти чёрный фон с
-        размытием, и страница под ним была не видна вовсе — вместе с
-        баннером и фоновым видео. Теперь видно всё, и остаётся только
-        подсказка.
+        Содержимое и размытие взяты из настроек страницы-образца: там стоит
+        `reveal_screen_blur: 15`, а текстом заставки являются только два
+        эмодзи с линией под ними (`reveal_screen_text`). Никаких подписей
+        и кнопок поверх — иначе заставка выглядит не как на образце.
       */}
       <AnimatePresence>
         {!started ? (
           <motion.button
             type="button"
+            aria-label="Нажмите, чтобы включить музыку"
             onClick={() => void begin()}
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
-            className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-5 bg-background/35 backdrop-blur-[2px]"
+            className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-6 backdrop-blur-[15px]"
           >
             {/* Эмодзи стоят на заставке, а не на баннере: так же, как на
                 образце, и сразу видны при первом открытии. */}
@@ -358,17 +359,11 @@ export function MusicWidget() {
               ))}
             </span>
 
-            <span className="border-primary/60 text-primary grid size-16 place-items-center rounded-full border-2 bg-background/60 transition-transform duration-300 group-hover:scale-110">
-              <PlayIcon className="size-7 translate-x-0.5" />
-            </span>
-            <span className="rounded-full bg-background/70 px-4 py-1.5 text-center">
-              <span className="font-heading block text-xl font-semibold tracking-tight">
-                {profile.name}
-              </span>
-              <span className="text-muted-foreground block text-xs">
-                Нажмите в любом месте, чтобы включить музыку
-              </span>
-            </span>
+            {/* Линия под эмодзи — тег `[hr-theme]` в тексте заставки. */}
+            <span
+              aria-hidden
+              className="border-border/30 w-24 border-t transition-colors group-hover:border-primary"
+            />
           </motion.button>
         ) : null}
       </AnimatePresence>

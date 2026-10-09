@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Inter, JetBrains_Mono } from "next/font/google"
+import { Inter, JetBrains_Mono, Unbounded } from "next/font/google"
 import { profile } from "@/lib/profile"
 import "./globals.css"
 
@@ -15,8 +15,22 @@ const mono = JetBrains_Mono({
   display: "swap",
 })
 
+/**
+ * Заголовки — Unbounded. На странице-образце именно он (`font: Unbounded`),
+ * и начертание у него геометрическое, с заметными срезанными углами: с
+ * обычным Inter имя выглядит совсем другим, а это главный элемент страницы.
+ * Начертание содержит и кириллицу, поэтому русский текст не выпадает.
+ */
+const unbounded = Unbounded({
+  variable: "--font-unbounded",
+  subsets: ["latin", "cyrillic"],
+  display: "swap",
+})
+
 export const metadata: Metadata = {
-  title: `${profile.name} — ${profile.roles.join(" и ").toLowerCase()}`,
+  // Заголовок вкладки на образце — просто имя, без описания. Длинный
+  // вариант выглядел бы вкладкой, размазанной по всему экрану.
+  title: profile.name,
   description:
     "Фронтенд-разработчик и фриланс: интерфейсы на React и TypeScript, вёрстка, анимации, адаптив. Сайты под ключ.",
   openGraph: {
@@ -35,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="ru"
-      className={`dark ${inter.variable} ${mono.variable} h-full antialiased`}
+      className={`dark ${inter.variable} ${mono.variable} ${unbounded.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">{children}</body>
     </html>

@@ -26,6 +26,8 @@ export const profile = {
    */
   bio: "[em][theme][color=00AA72][center][h][dc-emoji-id]1508936569032282273[/dc-emoji-id] Hi, I’m a junior developer. [dc-emoji-id]1508936569032282273[/dc-emoji-id][/h][/center][/color][/theme][/em]",
   location: "Москва, Россия",
+  /** Теги под описанием — как на странице-образце. */
+  tags: ["Coding on HTML/CSS", "Coding on Python"],
 } as const
 
 export type Link = {
@@ -150,7 +152,7 @@ export const track = {
    * localhost префикс пустой, на GitHub Pages — /bio.
    */
   src: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/audio/track.mp3`,
-  title: "Запомни меня",
+  title: "Вечно молодой",
   artist: "OLEHAN",
   /**
    * Обложка. Файла пока нет — плеер рисует градиентную заглушку. Положите
