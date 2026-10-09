@@ -151,7 +151,7 @@ export const discord = {
    * для этого не нужны. Сервер может быть чужим.
    */
   invite: "cQJ6bNn2ek",
-  presenceEndpoint: "",
+  presenceEndpoint: "https://discord-presence-bot.78-154-103-31.sslip.io/",
 } as const
 
 /**

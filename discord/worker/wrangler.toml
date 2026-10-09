@@ -7,7 +7,7 @@ compatibility_date = "2025-01-01"
 # Он придёт в выводе команды — сюда, в поле id.
 [[kv_namespaces]]
 binding = "PRESENCE"
-id = "ВПИШИТЕ_ID_ИЗ_WRANGLER"
+id = "dd584fc5b5024c0a829c718e36ec32e2"
 
 # WRITE_SECRET НЕ пишется сюда. Он задаётся отдельно:
 #   wrangler secret put WRITE_SECRET
