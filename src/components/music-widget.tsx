@@ -13,7 +13,7 @@ import {
   VolumeXIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { track } from "@/lib/profile"
+import { profile, track } from "@/lib/profile"
 
 /**
  * НАСТРОЙКИ, КОТОРЫЕ ПЕРЕЖИВАЮТ ПЕРЕЗАГРУЗКУ.
@@ -66,20 +66,20 @@ function trackStyle(ratio: number, idle: string) {
  *
  * Панель висит поверх любого отдела и ни с чем не пересекается.
  *
- * Автозапуск. Браузер не даёт включать звук без действия пользователя, и
- * обойти это нельзя — можно только не мешать пользователю. Поэтому:
- *   1) пробуем включить сразу при открытии страницы;
- *   2) если браузер отказал, повторяем попытку при первом же нажатии в любом
- *      месте — то есть музыка начинает играть, как только человек что-то
- *      сделал;
- *   3) если и это не вышло, на значке остаётся пульсирующее кольцо.
+ * Почему без автозапуска. Браузер запрещает включать звук без действия
+ * пользователя, и обойти это нельзя. Раньше страница пыталась включить
+ * трек сама, ловила отказ и потом заново пыталась при каждом нажатии — из-за
+ * этого музыка то включалась, то нет, и выглядело это как сбой. Теперь
+ * всё однозначно: при открытии висит экран «нажмите, чтобы начать», и
+ * первое же нажатие включает музыку. Никаких молчаливых попыток.
  */
 export function MusicWidget() {
   const audioRef = React.useRef<HTMLAudioElement>(null)
   const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const [started, setStarted] = React.useState(false)
   const [open, setOpen] = React.useState(false)
   const [playing, setPlaying] = React.useState(false)
-  const [blocked, setBlocked] = React.useState(false)
+  const [failed, setFailed] = React.useState(false)
   const [muted, setMuted] = React.useState(false)
   const [volume, setVolume] = React.useState(0.5)
   const [current, setCurrent] = React.useState(0)
@@ -88,7 +88,7 @@ export function MusicWidget() {
 
   const analyser = React.useRef<AnalyserNode | null>(null)
   const levels = React.useRef<Float32Array | null>(null)
-  const started = React.useRef(false)
+  const visualizerStarted = React.useRef(false)
   const frame = React.useRef(0)
 
   /** Ровная линия в покое и на любом отказе от визуализатора. */
@@ -153,8 +153,11 @@ export function MusicWidget() {
    * бы в тишине навсегда.
    */
   const startVisualizer = React.useCallback(async () => {
-    if (started.current) return
-    started.current = true
+    // Флаг живёт в ref, а не в состоянии: подключать плеер к Web Audio
+    // можно только один раз на элемент, и перерисовывать всё дерево из-за
+    // этого флага незачем.
+    if (visualizerStarted.current) return
+    visualizerStarted.current = true
 
     const audio = audioRef.current
     if (!audio) return
@@ -185,20 +188,24 @@ export function MusicWidget() {
     }
   }, [drawIdle, drawWave])
 
-  /** Одна попытка включить. Возвращает true, если заработало. */
-  const attemptPlay = React.useCallback(async () => {
+  /** Одно нажатие пользователя: включаем трек и снимаем заставку. */
+  const begin = React.useCallback(async () => {
     const audio = audioRef.current
-    if (!audio) return false
-    if (!audio.paused) return true
+    if (!audio) return
+
+    void startVisualizer()
+    setStarted(true)
+
     try {
       await audio.play()
-      return true
+      setFailed(false)
     } catch {
-      return false
+      setFailed(true)
     }
-  }, [])
+  }, [startVisualizer])
 
-  // Восстановление настроек и первая попытка автозапуска.
+  // Настройки читаются один раз: до первого нажатия звук всё равно не идёт,
+  // а состояние панели восстановится само из хранилища.
   React.useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
@@ -217,43 +224,7 @@ export function MusicWidget() {
     setOpen(readStored(STORE.open, "0") === "1")
 
     drawIdle()
-
-    let cancelled = false
-    void attemptPlay().then((ok) => {
-      if (!cancelled) setBlocked(!ok)
-    })
-
-    return () => {
-      cancelled = true
-    }
-  }, [attemptPlay, drawIdle])
-
-  /**
-   * Второй шанс — первое же действие пользователя.
-   *
-   * Именно здесь автозапуск обычно и срабатывает: браузер снимает запрет
-   * после первого клика.
-   */
-  React.useEffect(() => {
-    const retry = async () => {
-      const audio = audioRef.current
-      if (!audio || !audio.paused) return
-      const ok = await attemptPlay()
-      if (ok) {
-        setBlocked(false)
-        void startVisualizer()
-        window.removeEventListener("pointerdown", retry)
-        window.removeEventListener("keydown", retry)
-      }
-    }
-
-    window.addEventListener("pointerdown", retry)
-    window.addEventListener("keydown", retry)
-    return () => {
-      window.removeEventListener("pointerdown", retry)
-      window.removeEventListener("keydown", retry)
-    }
-  }, [attemptPlay, startVisualizer])
+  }, [drawIdle])
 
   React.useEffect(() => {
     const audio = audioRef.current
@@ -265,7 +236,7 @@ export function MusicWidget() {
       setPlaying(false)
       setCurrent(0)
     }
-    const onError = () => setBlocked(true)
+    const onError = () => setFailed(true)
 
     audio.addEventListener("loadedmetadata", onLoaded)
     audio.addEventListener("timeupdate", onTime)
@@ -287,10 +258,18 @@ export function MusicWidget() {
 
     setOpen(true)
 
+    if (!started) {
+      await begin()
+      return
+    }
+
     if (audio.paused) {
-      void startVisualizer()
-      const ok = await attemptPlay()
-      setBlocked(!ok)
+      try {
+        await audio.play()
+        setFailed(false)
+      } catch {
+        setFailed(true)
+      }
     } else {
       audio.pause()
     }
@@ -339,6 +318,37 @@ export function MusicWidget() {
         onPause={() => setPlaying(false)}
       />
 
+      {/*
+        Заставка. Браузер всё равно не пускает музыку без действия
+        пользователя, поэтому вместо тихих попыток включить трек самому
+        показывается честное предложение нажать. Одно нажатие в любом месте
+        экрана запускает музыку и убирает заставку.
+      */}
+      <AnimatePresence>
+        {!started ? (
+          <motion.button
+            type="button"
+            onClick={() => void begin()}
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5 }}
+            className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-6 bg-background/85 backdrop-blur-xl"
+          >
+            <span className="border-primary/60 text-primary grid size-20 place-items-center rounded-full border-2 transition-transform duration-300 group-hover:scale-110">
+              <PlayIcon className="size-8 translate-x-0.5" />
+            </span>
+            <span className="text-center">
+              <span className="font-heading block text-2xl font-semibold tracking-tight">
+                {profile.name}
+              </span>
+              <span className="text-muted-foreground mt-1 block text-sm">
+                Нажмите в любом месте, чтобы включить музыку
+              </span>
+            </span>
+          </motion.button>
+        ) : null}
+      </AnimatePresence>
+
       {/* Значок в углу: остаётся на месте, пока панель не открыта. */}
       <button
         type="button"
@@ -349,8 +359,8 @@ export function MusicWidget() {
       >
         {open ? <ChevronDownIcon className="size-5" /> : <VolumeIcon className="size-5" />}
 
-        {/* Кольцо напоминает: браузер не дал включить звук сам. */}
-        {blocked ? (
+        {/* Кольцо напоминает: музыку ещё не включили. */}
+        {!playing ? (
           <span
             aria-hidden
             className="border-primary absolute inset-0 animate-ping rounded-full border-2 opacity-75"
@@ -483,9 +493,9 @@ export function MusicWidget() {
               </span>
             </div>
 
-            {blocked ? (
+            {failed ? (
               <p className="text-muted-foreground mt-2 text-xs">
-                Браузер не даёт включить звук сам — нажмите на плей.
+                Браузер не смог запустить трек — попробуйте нажать ещё раз.
               </p>
             ) : null}
           </motion.div>

@@ -6,7 +6,7 @@ import { MacOsDock, type DockEntry } from "@/components/ui/mac-os-dock"
 import { ICONS } from "@/components/icons"
 import { MusicWidget } from "@/components/music-widget"
 import { ActivityRoom, ProfileRoom } from "@/components/rooms"
-import { sections } from "@/lib/profile"
+import { sections, media } from "@/lib/profile"
 
 /** Что показывать в каждом отделе. */
 const ROOMS: Record<string, React.ReactNode> = {
@@ -40,6 +40,23 @@ export function SiteShell() {
 
   return (
     <div className="fixed inset-0 overflow-hidden">
+      {/*
+        Фоновая запись под всей страницей. Идёт по кругу, без звука и
+        приглушена: это фон, а не содержимое. `aria-hidden` и отсутствие
+        `autoPlay` — видео не должно ни играть само, ни попадать в
+        озвучку для незрячих.
+      */}
+      <video
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10 size-full object-cover opacity-25"
+        src={media.background}
+        poster=""
+        muted
+        loop
+        playsInline
+        preload="none"
+      />
+
       {/* Крупная полупрозрачная подпись на фоне — приём из ИБ-Гида. */}
       <div
         aria-hidden

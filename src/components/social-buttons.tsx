@@ -39,6 +39,9 @@ const TINT: Record<string, { ring: string; text: string; shine: string }> = {
  * Отличия от исходника: вместо Discord и YouTube там ваши четыре ссылки, и
  * кнопка стала `<a>`, а не `<button>` без обработчика — в примере клик по
  * ней ничего не делал. Значок каждой берётся из общей таблицы иконок.
+ *
+ * Подпись под кнопкой всегда видна, а не только при наведении: по кружку
+ * непонятно, куда он ведёт, и приходилось бы наводить на каждый.
  */
 export function SocialButtons({ links }: { links: Link[] }) {
   return (
@@ -54,17 +57,22 @@ export function SocialButtons({ links }: { links: Link[] }) {
             target="_blank"
             rel="noreferrer noopener"
             title={link.value}
-            aria-label={link.label}
-            className={`group relative cursor-pointer overflow-hidden rounded-full border bg-gradient-to-tr from-black/60 to-black/40 p-4 shadow-lg backdrop-blur-lg transition-all duration-300 ease-out hover:scale-110 hover:rotate-3 hover:shadow-2xl hover:from-white/10 active:scale-95 active:rotate-0 ${tint.ring} ${tint.text}`}
+            className="group flex flex-col items-center gap-2 text-center"
           >
-            {/* Полоса света, пробегающая по кнопке при наведении. */}
-            <div
-              aria-hidden
-              className={`absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full ${tint.shine}`}
-            />
-            <div className="relative z-10">
-              <Icon className="size-6 transition-colors duration-300" />
-            </div>
+            <span
+              className={`relative block cursor-pointer overflow-hidden rounded-full border bg-gradient-to-tr from-black/60 to-black/40 p-4 shadow-lg backdrop-blur-lg transition-all duration-300 ease-out hover:scale-110 hover:rotate-3 hover:shadow-2xl hover:from-white/10 active:scale-95 active:rotate-0 ${tint.ring} ${tint.text}`}
+            >
+              {/* Полоса света, пробегающая по кнопке при наведении. */}
+              <span
+                aria-hidden
+                className={`absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent to-transparent transition-transform duration-700 ease-out group-hover:translate-x-full ${tint.shine}`}
+              />
+              <Icon className="relative z-10 size-6 transition-colors duration-300" />
+            </span>
+
+            <span className="text-muted-foreground group-hover:text-foreground text-xs transition-colors">
+              {link.label}
+            </span>
           </a>
         )
       })}

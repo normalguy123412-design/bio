@@ -73,6 +73,38 @@ export const links: Link[] = [
 ]
 
 /**
+ * Файлы в public/.
+ *
+ * Путь собирается вручную: на localhost префикс пустой, на GitHub Pages —
+ * /bio. Файлы лежат рядом с кодом, поэтому ссылка на них не протухнет.
+ */
+const base = process.env.NEXT_PUBLIC_BASE_PATH ?? ""
+
+export const media = {
+  /** Фотография профиля. */
+  avatar: `${base}/avatar.jpg`,
+  /** Анимированный баннер карточки. */
+  banner: `${base}/banner.gif`,
+  /**
+   * Фоновая видеозапись под всей страницей. Исходник весил 15 МБ, поэтому
+   * пережат: 1280px, 24 кадра в секунду, без звука — 1,7 МБ.
+   */
+  background: `${base}/background.mp4`,
+} as const
+
+/**
+ * Эмодзи Discord.
+ *
+ * Адрес ведёт прямо на CDN Discord, где лежат анимированные версии: без
+ * `animated=true` сервер отдаёт статичный кадр. Показываются всегда парой и
+ * рядом — поодиночке они терялись на фоне.
+ */
+export const emojis = {
+  left: "https://cdn.discordapp.com/emojis/1504516583370788864.webp?animated=true",
+  right: "https://cdn.discordapp.com/emojis/1504516589943263292.webp?animated=true",
+} as const
+
+/**
  * Разделы страницы для боковой навигации. Порядок совпадает с порядком на
  * странице.
  *

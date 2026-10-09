@@ -1,13 +1,15 @@
 "use client"
 
 import { MapPinIcon } from "lucide-react"
+import Image from "next/image"
 import ContributionSkyline, {
   type ContributionDay,
 } from "@/components/ui/contribution-skyline"
 import { TextShimmer } from "@/components/ui/text-shimmer"
 import { SocialButtons } from "@/components/social-buttons"
+import { TiltCard } from "@/components/tilt-card"
 import { ViewCounter } from "@/components/view-counter"
-import { links, profile } from "@/lib/profile"
+import { emojis, links, media, profile } from "@/lib/profile"
 import contributions from "@/data/contributions.json"
 
 /**
@@ -41,80 +43,111 @@ export function Room({
   )
 }
 
-function Banner() {
-  return (
-    <div
-      aria-hidden
-      className="from-primary/30 via-cyan-500/20 h-44 w-full bg-gradient-to-br sm:h-56"
-    >
-      {/* Едва заметная сетка поверх градиента — как на фоне ИБ-Гида. */}
-      <div className="h-full w-full bg-[linear-gradient(to_right,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.06)_1px,transparent_1px)] bg-[size:44px_44px] [mask-image:linear-gradient(to_bottom,black,transparent)]" />
-    </div>
-  )
-}
-
 /**
  * Отдел «Профиль».
  *
- * Здесь же внизу карточки живут кнопки ссылок — раньше для них был отдельный
- * отдел и до них ещё надо было добраться переключением.
+ * Карточка стеклянная и наклоняется за курсором — приём `TiltCard`. Внутри
+ * неё всё, что о профиле: фотография, баннер, эмодзи, имя, роль, город,
+ * счётчик просмотров и кнопки ссылок.
  */
 export function ProfileRoom() {
   return (
     <Room id="profile" title="Профиль">
-      <article className="border-border bg-card relative overflow-hidden rounded-2xl border">
-        <Banner />
-
-        <div className="px-5 pb-6 sm:px-6">
-          {/* Аватар с мягким свечением и медленным поворотом кольца. */}
-          <div className="relative -mt-10 inline-block">
+      <TiltCard className="[perspective:1200px]">
+        <article className="border-border/70 relative overflow-hidden rounded-2xl border bg-card/45 shadow-2xl backdrop-blur-xl">
+          {/* Баннер из public/banner.gif. */}
+          <div className="relative h-44 w-full overflow-hidden sm:h-56">
+            <Image
+              src={media.banner}
+              alt=""
+              width={500}
+              height={281}
+              unoptimized
+              priority
+              className="size-full object-cover"
+            />
             <div
               aria-hidden
-              className="from-sky-400 to-emerald-400 animate-spin-slow absolute -inset-1.5 rounded-full bg-gradient-to-tr opacity-40 blur-md"
+              className="absolute inset-0 bg-gradient-to-t from-card/90 via-transparent to-transparent"
             />
-            <div className="from-sky-400 to-emerald-400 relative grid size-20 place-items-center rounded-full border-4 border-card bg-gradient-to-br text-2xl font-bold text-black">
-              {profile.avatar}
+
+            {/*
+              Эмодзи Discord. Держатся в одной строке с отрицательным
+              отступом, поэтому стоят вплотную друг к другу: поодиночке они
+              разъезжались и выглядели двумя случайными значками.
+            */}
+            <div className="absolute top-3 left-4 flex items-center">
+              {[emojis.left, emojis.right].map((src, index) => (
+                <Image
+                  key={src}
+                  src={src}
+                  alt=""
+                  width={40}
+                  height={40}
+                  unoptimized
+                  className={index === 1 ? "-ml-3 size-9" : "size-10"}
+                />
+              ))}
             </div>
           </div>
 
-          {/* По имени и роли бежит светлая волна. */}
-          <TextShimmer
-            as="h1"
-            duration={3}
-            className="font-heading mt-4 text-4xl font-bold tracking-tight text-balance sm:text-5xl"
-          >
-            {profile.name}
-          </TextShimmer>
+          <div className="px-5 pb-6 sm:px-6">
+            {/* Фотография с мягким свечением и медленно вращающимся кольцом. */}
+            <div className="relative -mt-12 inline-block">
+              <div
+                aria-hidden
+                className="from-sky-400 to-emerald-400 animate-spin-slow absolute -inset-1.5 rounded-full bg-gradient-to-tr opacity-40 blur-md"
+              />
+              <Image
+                src={media.avatar}
+                alt={profile.name}
+                width={80}
+                height={80}
+                unoptimized
+                priority
+                className="relative size-20 rounded-full border-4 border-card object-cover"
+              />
+            </div>
 
-          <TextShimmer
-            as="p"
-            duration={3.6}
-            spread={1}
-            className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.95rem]"
-          >
-            {profile.roles.join("  ·  ")}
-          </TextShimmer>
+            {/* По имени и роли бежит световая волна. */}
+            <TextShimmer
+              as="h1"
+              duration={3}
+              className="font-heading mt-4 text-4xl font-bold tracking-tight text-balance sm:text-5xl"
+            >
+              {profile.name}
+            </TextShimmer>
 
-          <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed italic">
-            {profile.bio}
-          </p>
+            <TextShimmer
+              as="p"
+              duration={3.6}
+              spread={1}
+              className="text-muted-foreground mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[0.95rem]"
+            >
+              {profile.roles.join("  ·  ")}
+            </TextShimmer>
 
-          <div className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-            <span className="flex items-center gap-1.5">
-              <MapPinIcon className="size-4" />
-              {profile.location}
-            </span>
-            <ViewCounter />
-          </div>
-
-          <div className="border-border mt-6 border-t pt-6">
-            <p className="text-muted-foreground mb-3 text-xs tracking-[0.08em] uppercase">
-              Написать
+            <p className="mt-5 max-w-xl text-pretty text-base leading-relaxed italic">
+              {profile.bio}
             </p>
-            <SocialButtons links={links} />
+
+            <div className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+              <span className="flex items-center gap-1.5">
+                <MapPinIcon className="size-4" />
+                {profile.location}
+              </span>
+              <ViewCounter />
+            </div>
+
+            <div className="border-border/70 mt-6 border-t pt-6">
+              <p className="text-muted-foreground mb-3 text-xs tracking-[0.08em] uppercase">
+                Написать
+              </p>
+              <SocialButtons links={links} />
+            </div>
           </div>
-        </div>
-      </article>
+        </article>
+      </TiltCard>
     </Room>
   )
 }
