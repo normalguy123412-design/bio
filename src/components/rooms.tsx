@@ -10,6 +10,8 @@ import { SocialButtons } from "@/components/social-buttons"
 import { RichText } from "@/components/rich-text"
 import { TiltCard } from "@/components/tilt-card"
 import { ViewCounter } from "@/components/view-counter"
+import { DiscordPresence } from "@/components/discord-presence"
+import { DiscordServerWidget } from "@/components/discord-widget"
 import { links, media, profile } from "@/lib/profile"
 import contributions from "@/data/contributions.json"
 
@@ -221,6 +223,17 @@ export function ProfileRoom() {
               <div className="flex justify-center">
                 <SocialButtons links={links} />
               </div>
+            </div>
+
+            {/*
+              Discord: карточка активности и виджет сервера. Обе части
+              молча скрыты, пока для них не настроено то, что снаружи сайта:
+              виджет ещё не включён на сервере, а данные об активности
+              приходят из бота и облака (см. папку discord).
+            */}
+            <div className="mt-6 w-full space-y-4">
+              <DiscordPresence />
+              <DiscordServerWidget />
             </div>
           </div>
         </article>

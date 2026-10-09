@@ -1,0 +1,13 @@
+name = "discord-presence"
+main = "src/index.js"
+compatibility_date = "2025-01-01"
+
+# Идентификатор пространства ключей вписывается после
+#   wrangler kv namespace create PRESENCE
+# Он придёт в выводе команды — сюда, в поле id.
+[[kv_namespaces]]
+binding = "PRESENCE"
+id = "ВПИШИТЕ_ID_ИЗ_WRANGLER"
+
+# WRITE_SECRET НЕ пишется сюда. Он задаётся отдельно:
+#   wrangler secret put WRITE_SECRET
