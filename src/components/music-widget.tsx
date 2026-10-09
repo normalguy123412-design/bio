@@ -13,7 +13,7 @@ import {
   VolumeXIcon,
 } from "lucide-react"
 import { AnimatePresence, motion } from "motion/react"
-import { profile, track } from "@/lib/profile"
+import { emojis, profile, track } from "@/lib/profile"
 
 /**
  * НАСТРОЙКИ, КОТОРЫЕ ПЕРЕЖИВАЮТ ПЕРЕЗАГРУЗКУ.
@@ -314,6 +314,8 @@ export function MusicWidget() {
         ref={audioRef}
         src={track.src}
         preload="auto"
+        /* Трек короткий, поэтому играет по кругу — как на странице-образце. */
+        loop
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
       />
@@ -334,6 +336,23 @@ export function MusicWidget() {
             transition={{ duration: 0.5 }}
             className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-6 bg-background/85 backdrop-blur-xl"
           >
+            {/* Эмодзи стоят на заставке, а не на баннере: так же, как на
+                образце, и сразу видны при первом открытии. */}
+            <span className="flex items-center">
+              {[emojis.left, emojis.right].map((src, index) => (
+                <Image
+                  key={src}
+                  src={src}
+                  alt=""
+                  width={48}
+                  height={48}
+                  unoptimized
+                  priority
+                  className={index === 1 ? "-ml-3 size-11" : "size-12"}
+                />
+              ))}
+            </span>
+
             <span className="border-primary/60 text-primary grid size-20 place-items-center rounded-full border-2 transition-transform duration-300 group-hover:scale-110">
               <PlayIcon className="size-8 translate-x-0.5" />
             </span>

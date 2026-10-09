@@ -5,13 +5,13 @@ import { AnimatePresence, motion } from "motion/react"
 import { MacOsDock, type DockEntry } from "@/components/ui/mac-os-dock"
 import { ICONS } from "@/components/icons"
 import { MusicWidget } from "@/components/music-widget"
-import { ActivityRoom, ProfileRoom } from "@/components/rooms"
-import { sections, media } from "@/lib/profile"
+import { useScrambledTitle } from "@/components/ui/text-shimmer"
+import { ProfileRoom } from "@/components/rooms"
+import { sections, media, profile } from "@/lib/profile"
 
 /** Что показывать в каждом отделе. */
 const ROOMS: Record<string, React.ReactNode> = {
   profile: <ProfileRoom />,
-  activity: <ActivityRoom />,
 }
 
 /**
@@ -25,6 +25,12 @@ const ROOMS: Record<string, React.ReactNode> = {
  */
 export function SiteShell() {
   const [current, setCurrent] = React.useState(sections[0].id)
+
+  /*
+    Заголовок вкладки собирается из шума один раз при открытии страницы:
+    сначала случайные символы, потом настоящее имя. Дальше не трогаем.
+  */
+  useScrambledTitle(`${profile.name} — ${profile.roles.join(" и ").toLowerCase()}`)
 
   const entries = React.useMemo<DockEntry[]>(
     () =>
@@ -41,20 +47,22 @@ export function SiteShell() {
   return (
     <div className="fixed inset-0 overflow-hidden">
       {/*
-        Фоновая запись под всей страницей. Идёт по кругу, без звука и
-        приглушена: это фон, а не содержимое. `aria-hidden` и отсутствие
-        `autoPlay` — видео не должно ни играть само, ни попадать в
-        озвучку для незрячих.
+        Фоновая запись под всей страницей. Идёт по кругу и без звука, при
+        гашения: это фон, а не содержимое.
+        `autoPlay muted` здесь обязателен: без них видео не грузится вообще
+        и фон остаётся пустым чёрным — именно так он и выглядел, пока
+        `preload` был «none», а автозапуска не было.
+        `aria-hidden` — чтобы экранный диктор не пытался его озвучить.
       */}
       <video
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10 size-full object-cover opacity-25"
+        className="pointer-events-none absolute inset-0 -z-10 size-full object-cover opacity-30"
         src={media.background}
-        poster=""
+        autoPlay
         muted
         loop
         playsInline
-        preload="none"
+        preload="metadata"
       />
 
       {/* Крупная полупрозрачная подпись на фоне — приём из ИБ-Гида. */}
