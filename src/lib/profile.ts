@@ -77,7 +77,6 @@ export const sections: { id: string; label: string; icon: IconName }[] = [
   { id: "profile", label: "Профиль", icon: "book" },
   { id: "links", label: "Ссылки", icon: "github" },
   { id: "activity", label: "Активность", icon: "shield" },
-  { id: "music", label: "Музыка", icon: "send" },
 ]
 
 /** Трек для плеера. Сам файл лежит в public/audio. */
@@ -88,6 +87,12 @@ export const track = {
    * localhost префикс пустой, на GitHub Pages — /bio.
    */
   src: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/audio/track.mp3`,
-  /** У файла нет метаданных, поэтому подпись условная — поменяйте на настоящую. */
-  title: "1.flac",
+  title: "Запомни меня",
+  artist: "OLEHAN",
+  /**
+   * Обложка. Файла пока нет — плеер рисует градиентную заглушку. Положите
+   * картинку в public/audio/cover.jpg (квадрат, от 512×512) и путь встанет
+   * сюда.
+   */
+  cover: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/audio/cover.jpg`,
 } as const
