@@ -17,9 +17,15 @@ export const profile = {
   name: "NiceGuy",
   handle: "@Chea1eRs",
   roles: ["Разработчик интерфейсов", "Фриланс"],
-  bio: "Делаю интерфейсы на React и TypeScript: вёрстка, анимации, адаптив. Беру заказы под ключ — от идеи до готовой страницы.",
+  /**
+   * О себе — в разметке bio-страниц, теми же тегами:
+   * `[em]` — курсив, `[color=…]` — цвет, `[h]` — выделение,
+   * `[dc-emoji-id]…[/dc-emoji-id]` — эмодзи Discord по его id.
+   * Разбирает их компонент RichText, так что в тексте видны не скобки,
+   * а оформление.
+   */
+  bio: "[em][theme][color=00AA72][center][h][dc-emoji-id]1508936569032282273[/dc-emoji-id] Hi, I’m a junior developer. [dc-emoji-id]1508936569032282273[/dc-emoji-id][/h][/center][/color][/theme][/em]",
   location: "Москва, Россия",
-  avatar: "NG",
 } as const
 
 export type Link = {

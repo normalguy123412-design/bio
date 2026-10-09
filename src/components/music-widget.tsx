@@ -325,6 +325,11 @@ export function MusicWidget() {
         пользователя, поэтому вместо тихих попыток включить трек самому
         показывается честное предложение нажать. Одно нажатие в любом месте
         экрана запускает музыку и убирает заставку.
+
+        Затемнение намеренно слабое: раньше здесь стоял почти чёрный фон с
+        размытием, и страница под ним была не видна вовсе — вместе с
+        баннером и фоновым видео. Теперь видно всё, и остаётся только
+        подсказка.
       */}
       <AnimatePresence>
         {!started ? (
@@ -334,7 +339,7 @@ export function MusicWidget() {
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.5 }}
-            className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-6 bg-background/85 backdrop-blur-xl"
+            className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-5 bg-background/35 backdrop-blur-[2px]"
           >
             {/* Эмодзи стоят на заставке, а не на баннере: так же, как на
                 образце, и сразу видны при первом открытии. */}
@@ -353,14 +358,14 @@ export function MusicWidget() {
               ))}
             </span>
 
-            <span className="border-primary/60 text-primary grid size-20 place-items-center rounded-full border-2 transition-transform duration-300 group-hover:scale-110">
-              <PlayIcon className="size-8 translate-x-0.5" />
+            <span className="border-primary/60 text-primary grid size-16 place-items-center rounded-full border-2 bg-background/60 transition-transform duration-300 group-hover:scale-110">
+              <PlayIcon className="size-7 translate-x-0.5" />
             </span>
-            <span className="text-center">
-              <span className="font-heading block text-2xl font-semibold tracking-tight">
+            <span className="rounded-full bg-background/70 px-4 py-1.5 text-center">
+              <span className="font-heading block text-xl font-semibold tracking-tight">
                 {profile.name}
               </span>
-              <span className="text-muted-foreground mt-1 block text-sm">
+              <span className="text-muted-foreground block text-xs">
                 Нажмите в любом месте, чтобы включить музыку
               </span>
             </span>

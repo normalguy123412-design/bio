@@ -7,6 +7,7 @@ import ContributionSkyline, {
 } from "@/components/ui/contribution-skyline"
 import { TextShimmer } from "@/components/ui/text-shimmer"
 import { SocialButtons } from "@/components/social-buttons"
+import { RichText } from "@/components/rich-text"
 import { TiltCard } from "@/components/tilt-card"
 import { ViewCounter } from "@/components/view-counter"
 import { links, media, profile } from "@/lib/profile"
@@ -172,9 +173,7 @@ export function ProfileRoom() {
               {profile.roles.join("  ·  ")}
             </TextShimmer>
 
-            <p className="mt-4 max-w-xl text-pretty text-sm leading-relaxed italic">
-              {profile.bio}
-            </p>
+            <RichText className="mt-4 max-w-xl text-sm">{profile.bio}</RichText>
 
             <div className="text-muted-foreground mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-sm">
               <span className="flex items-center gap-1.5">
