@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import Image from "next/image"
+import { LeafIcon } from "lucide-react"
 import { discord } from "@/lib/profile"
 
 /**
@@ -21,7 +22,14 @@ type Presence = {
   status: "online" | "idle" | "dnd" | "offline" | string
   username?: string | null
   avatar?: string | null
-  activity?: { name?: string | null; startedAt?: number | null } | null
+  activity?: {
+    name?: string | null
+    details?: string | null
+    state?: string | null
+    /** Обложка трека. Приходит только у Spotify-подобных активностей. */
+    cover?: string | null
+    startedAt?: number | null
+  } | null
   stale?: boolean
 }
 
@@ -34,15 +42,23 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 /**
- * Сколько прошло времени словами: «53 минуты», «2 часа 5 минут».
+ * Сколько прошло времени словами: «12 секунд», «53 минуты», «2 часа».
  *
  * Пишется вручную, потому что встроенный `Intl.DurationFormat` умеет
  * только «pt53m», а такую надпись на странице видеть не хочется.
  */
 function humanDuration(ms: number) {
-  const minutes = Math.floor(ms / 60_000)
-  if (minutes < 1) return "меньше минуты"
-  if (minutes < 60) return `${minutes} ${plural(minutes, "минуту", "минуты", "минут")}`
+  const seconds = Math.floor(ms / 1000)
+  if (seconds < 5) return "только что"
+
+  if (seconds < 60) {
+    return `${seconds} ${plural(seconds, "секунду", "секунды", "секунд")}`
+  }
+
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) {
+    return `${minutes} ${plural(minutes, "минуту", "минуты", "минут")}`
+  }
 
   const hours = Math.floor(minutes / 60)
   const rest = minutes % 60
@@ -108,10 +124,25 @@ export function DiscordPresence() {
   if (presence.stale || presence.status === "offline") return null
 
   const color = STATUS_COLOR[presence.status] ?? STATUS_COLOR.offline
-  const activity = presence.activity?.name
+  const activity = presence.activity
+
+  /*
+    Текст активности собирается из трёх возможных строк, и берутся они в том
+    порядке, в каком Discord их отдаёт. У игры заполнено `name`, у трека —
+    `state` («Listening to …») и `details` (название), поэтому порядок
+    разный, а вид одинаковый.
+  */
+  const lines: string[] = []
+  if (activity?.state) lines.push(activity.state)
+  else if (activity?.name) lines.push(`Играет в ${activity.name}`)
+  if (activity?.details) lines.push(activity.details)
+  if (activity?.startedAt && now) lines.push(`уже ${humanDuration(now - activity.startedAt)}`)
+
+  const hasActivity = lines.length > 0
+  const cover = activity?.cover
 
   return (
-    <div className="border-border/20 bg-card/40 flex items-center gap-4 rounded-xl border p-4 text-left">
+    <div className="flex items-center gap-4">
       {/*
         Аватар с точкой статуса. Точка лежит абсолютно на углу фотографии,
         а не сдвигается соседним элементом: раньше она стояла отдельным
@@ -139,51 +170,53 @@ export function DiscordPresence() {
         />
       </span>
 
-      <div className="min-w-0">
-        <p className="flex items-center gap-1.5 font-medium">
-          <span className="truncate">{presence.username ?? "Discord"}</span>
+      <div className="min-w-0 flex-1">
+        {/*
+          Правая часть строки: обложка трека, если играет, иначе тег
+          сервера. Раньше здесь стояла галочка верификации, которой у
+          обычного аккаунта нет и которая ничего не значит.
+        */}
+        <div className="flex items-center gap-2">
+          <span className="truncate font-medium">
+            {presence.username ?? "Discord"}
+          </span>
 
-          {/*
-            Тег сервера Discord рядом с ником. Значение приходит из профиля,
-            а не выдумывается: раньше здесь стояла галочка верификации, а
-            она у обычного аккаунта ничего не значит и вводит в заблуждение.
-            Пока тег не заполнен, значок просто не рисуется.
-          */}
-          {discord.serverTag ? (
+          {!hasActivity && discord.serverTag ? (
             <span
-              className="text-muted-foreground inline-flex shrink-0 items-center gap-1 rounded-md bg-black/25 px-1.5 py-0.5 text-xs font-normal"
+              className="bg-card/70 text-muted-foreground ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
               title="Тег сервера"
             >
-              {discord.serverTagBadge ? (
-                <Image
-                  src={discord.serverTagBadge}
-                  alt=""
-                  width={14}
-                  height={14}
-                  unoptimized
-                  className="size-3.5"
-                />
-              ) : null}
+              <LeafIcon className="size-3.5 text-emerald-400" />
               {discord.serverTag}
             </span>
           ) : null}
-        </p>
+        </div>
 
-        {activity ? (
-          <div className="text-muted-foreground mt-1 text-sm">
-            <p className="truncate">
-              Играет в <span className="text-foreground font-medium">{activity}</span>
-            </p>
-            {presence.activity?.startedAt && now ? (
-              <p className="text-xs">
-                уже {humanDuration(now - presence.activity.startedAt)}
-              </p>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-muted-foreground mt-1 text-sm">Не играет</p>
-        )}
+        {hasActivity ? (
+          <p className="mt-1 space-y-0.5 text-sm leading-snug">
+            {lines.map((line, index) => (
+              <span key={index} className="block truncate">
+                {index === lines.length - 1 ? (
+                  <span className="text-muted-foreground">{line}</span>
+                ) : (
+                  line
+                )}
+              </span>
+            ))}
+          </p>
+        ) : null}
       </div>
+
+      {hasActivity && cover ? (
+        <Image
+          src={cover}
+          alt=""
+          width={64}
+          height={64}
+          unoptimized
+          className="size-16 shrink-0 rounded-lg"
+        />
+      ) : null}
     </div>
   )
 }

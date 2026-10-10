@@ -165,7 +165,7 @@ export const discord = {
    * (`cdn.discordapp.com/guild-tag-badges/...`). Без неё показывается
    * один текст, это тоже нормально.
    */
-  serverTag: "",
+  serverTag: "CODE",
   serverTagBadge: "",
   /**
    * Откуда страница берёт «Играет в…».

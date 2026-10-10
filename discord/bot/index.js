@@ -88,19 +88,37 @@ async function publish(state) {
 /**
  * Приводит присутствие Discord к тому виду, который ждёт страница.
  *
- * Из активностей берётся только Playing: в списке бывают ещё Stream, Listening
- * и Watching, но надпись «Играет в…» для них была бы враньём. Время начала
- * хранится в облаке, а не здесь — облако не даёт ему накапливаться впустую.
+ * Берётся Playing, а вместе с ним Listening: страница показывает три
+ * строки — «Listening to …», название и сколько идёт, и для трека это
+ * как раз то, что нужно. Время начала хранится в облаке, а не здесь —
+ * облако не даёт ему накапливаться впустую.
  */
 function toState(presence, user) {
-  const playing = presence.activities?.find((activity) => activity.type === ActivityType.Playing)
+  const activities = presence.activities ?? []
+  const activity =
+    activities.find((item) => item.type === ActivityType.Playing) ??
+    activities.find((item) => item.type === ActivityType.Listening) ??
+    null
 
-  return {
+  const base = {
     userId: presence.userId,
     username: user?.globalName ?? user?.username ?? null,
     avatar: user?.displayAvatarURL({ size: 128 }) ?? null,
     status: presence.status ?? "offline",
-    activity: playing ? { name: playing.name ?? null, details: playing.details ?? null } : null,
+  }
+
+  if (!activity) return { ...base, activity: null }
+
+  return {
+    ...base,
+    activity: {
+      name: activity.name ?? null,
+      details: activity.details ?? null,
+      state: activity.state ?? null,
+      // Обложка есть только у треков Spotify-подобного вида. У обычной
+      // игры поля нет, и карточка просто останется без картинки справа.
+      cover: activity.artURL ?? activity.art_url ?? null,
+    },
   }
 }
 

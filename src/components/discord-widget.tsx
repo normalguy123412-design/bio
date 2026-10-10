@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { ShieldCheckIcon } from "lucide-react"
 import { discord } from "@/lib/profile"
 
 /**
@@ -16,15 +15,11 @@ import { discord } from "@/lib/profile"
  * вёрсткой по этим данным — выглядит так же, но работает с любым сервером.
  *
  * Ответ приходит с заголовком, разрешающим запрос с чужого домена, то есть
- * прямо из браузера.
+ * прямо из браузера. Ограничение на частоту запросов у Discord есть, и оно
+ * общее на всех посетителей, поэтому при сбое показывается прошлый ответ:
+ * он всё равно лучше пустой карточки.
  */
 
-/**
- * Ключ сохранённого ответа. Он же понадобится, когда Discord не ответит:
- * лимиты на запросы у него общие на всех посетителей сайта, и при наплыве
- * часть запросов отклоняется. Прошлый ответ за это время показывается
- * вместо пустой карточки.
- */
 const CACHE_KEY = "bio:discord-invite"
 
 type Invite = {
@@ -57,7 +52,7 @@ export function DiscordServerCard() {
     )
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
-        if (cancelled || !data?.guild) return
+        if (!data?.guild || cancelled) return
 
         const fresh: Invite = {
           name: data.guild.name,
@@ -71,10 +66,9 @@ export function DiscordServerCard() {
         setInvite(fresh)
       })
       .catch(() => {
-        // Запрос не прошёл: показываем прошлый ответ, он всё ещё лучше
-        // пустой карточки. Показать его сразу при открытии нельзя — это
-        // означало бы читать localStorage во время отрисовки, и серверный
-        // HTML разошёлся бы с браузерным.
+        // Запрос не прошёл: показываем прошлый ответ. Показать его сразу
+        // при открытии нельзя — это означало бы читать localStorage во
+        // время отрисовки, и серверный HTML разошёлся бы с браузерным.
         const cached = localStorage.getItem(key)
         if (!cached || cancelled) return
         try {
@@ -96,44 +90,45 @@ export function DiscordServerCard() {
       href={`https://discord.gg/${discord.invite}`}
       target="_blank"
       rel="noreferrer noopener"
-      className="group border-border/20 bg-card/40 block rounded-xl border p-4 transition-colors hover:bg-card/70"
+      className="group border-border/20 bg-card/30 flex items-center gap-4 rounded-xl border p-4 transition-colors hover:bg-card/60"
     >
-      <div className="flex items-center gap-4">
-        {invite?.icon ? (
-          <Image
-            src={invite.icon}
-            alt=""
-            width={56}
-            height={56}
-            unoptimized
-            className="size-14 shrink-0 rounded-2xl"
-          />
-        ) : (
-          <div className="bg-muted grid size-14 shrink-0 place-items-center rounded-2xl text-xl">
-            {invite?.name ? invite.name.trim()[0] : "?"}
-          </div>
-        )}
+      {invite?.icon ? (
+        <Image
+          src={invite.icon}
+          alt=""
+          width={48}
+          height={48}
+          unoptimized
+          className="size-12 shrink-0 rounded-2xl"
+        />
+      ) : (
+        <span className="bg-muted grid size-12 shrink-0 place-items-center rounded-2xl text-lg">
+          {invite?.name ? invite.name.trim()[0] : "?"}
+        </span>
+      )}
 
-        <div className="min-w-0">
-          <p className="flex items-center gap-1.5 truncate font-medium">
-            {invite?.name ?? "Сервер Discord"}
-            <ShieldCheckIcon className="size-4 shrink-0 text-sky-400" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium">{invite?.name ?? "Сервер Discord"}</p>
+
+        {/* Числа появляются только после ответа: показанные наугад или
+            устаревшие на видном месте смотрелись бы как настоящие. */}
+        {invite?.online !== null && invite?.online !== undefined ? (
+          <p className="text-muted-foreground mt-0.5 flex items-center gap-1.5 text-sm">
+            <span className="size-2 rounded-full bg-emerald-500" />
+            <span className="text-foreground">{invite.online} Online</span>
+            {invite.members ? (
+              <>
+                <span className="size-2 rounded-full bg-zinc-400" />
+                {invite.members} Members
+              </>
+            ) : null}
           </p>
-
-          {/* Числа появляются только после ответа: показанные наугад или
-              устаревшие на видном месте смотрелись бы как настоящие. */}
-          {invite?.online !== null && invite?.online !== undefined ? (
-            <p className="text-muted-foreground mt-1 text-sm">
-              <span className="text-foreground font-medium">{invite.online} Online</span>
-              {invite.members ? `  ·  ${invite.members} Members` : null}
-            </p>
-          ) : (
-            <p className="text-muted-foreground mt-1 text-sm">Присоединиться к серверу</p>
-          )}
-        </div>
+        ) : (
+          <p className="text-muted-foreground mt-0.5 text-sm">Присоединиться к серверу</p>
+        )}
       </div>
 
-      <span className="bg-primary text-primary-foreground mt-4 block rounded-lg px-4 py-2 text-center text-sm font-medium transition-opacity group-hover:opacity-90">
+      <span className="bg-primary text-primary-foreground shrink-0 rounded-lg px-4 py-2 text-sm font-medium transition-opacity group-hover:opacity-90">
         Join
       </span>
     </a>
