@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { LeafIcon } from "lucide-react"
 import { discord } from "@/lib/profile"
 
 /**
@@ -207,10 +206,9 @@ export function DiscordPresence() {
           */}
           {list.length === 0 && discord.serverTag ? (
             <span
-              className="bg-card/70 text-muted-foreground ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
+              className="bg-card/70 text-muted-foreground ml-auto inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs"
               title="Тег сервера"
             >
-              <LeafIcon className="size-3.5 text-emerald-400" />
               {discord.serverTag}
             </span>
           ) : null}
