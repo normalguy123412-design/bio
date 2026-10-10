@@ -2,7 +2,6 @@
 
 import * as React from "react"
 import Image from "next/image"
-import { CheckCircleIcon } from "lucide-react"
 import { discord } from "@/lib/profile"
 
 /**
@@ -113,30 +112,61 @@ export function DiscordPresence() {
 
   return (
     <div className="border-border/20 bg-card/40 flex items-center gap-4 rounded-xl border p-4 text-left">
-      {presence.avatar ? (
-        <Image
-          src={presence.avatar}
-          alt=""
-          width={64}
-          height={64}
-          unoptimized
-          className="relative size-16 shrink-0 rounded-full"
-        />
-      ) : (
-        <div className="bg-muted relative size-16 shrink-0 rounded-full" />
-      )}
+      {/*
+        Аватар с точкой статуса. Точка лежит абсолютно на углу фотографии,
+        а не сдвигается соседним элементом: раньше она стояла отдельным
+        блоком во flex с отступами -mt-12 ml-12, и при любой другой высоте
+        строки уезжала вверх от аватара, повисая над ним отдельно.
+      */}
+      <span className="relative shrink-0">
+        {presence.avatar ? (
+          <Image
+            src={presence.avatar}
+            alt=""
+            width={64}
+            height={64}
+            unoptimized
+            className="size-16 rounded-full"
+          />
+        ) : (
+          <span className="bg-muted block size-16 rounded-full" />
+        )}
 
-      {/* Точка статуса налезает на угол аватара, как в Discord. */}
-      <span
-        aria-hidden
-        className="relative -mt-12 ml-12 size-4 shrink-0 rounded-full border-2 border-card"
-        style={{ backgroundColor: color }}
-      />
+        <span
+          aria-hidden
+          className="border-card absolute -right-0.5 -bottom-0.5 size-4 rounded-full border-2"
+          style={{ backgroundColor: color }}
+        />
+      </span>
 
       <div className="min-w-0">
         <p className="flex items-center gap-1.5 font-medium">
           <span className="truncate">{presence.username ?? "Discord"}</span>
-          <CheckCircleIcon className="size-4 shrink-0 text-sky-400" />
+
+          {/*
+            Тег сервера Discord рядом с ником. Значение приходит из профиля,
+            а не выдумывается: раньше здесь стояла галочка верификации, а
+            она у обычного аккаунта ничего не значит и вводит в заблуждение.
+            Пока тег не заполнен, значок просто не рисуется.
+          */}
+          {discord.serverTag ? (
+            <span
+              className="text-muted-foreground inline-flex shrink-0 items-center gap-1 rounded-md bg-black/25 px-1.5 py-0.5 text-xs font-normal"
+              title="Тег сервера"
+            >
+              {discord.serverTagBadge ? (
+                <Image
+                  src={discord.serverTagBadge}
+                  alt=""
+                  width={14}
+                  height={14}
+                  unoptimized
+                  className="size-3.5"
+                />
+              ) : null}
+              {discord.serverTag}
+            </span>
+          ) : null}
         </p>
 
         {activity ? (
