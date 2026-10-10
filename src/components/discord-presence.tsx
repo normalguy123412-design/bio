@@ -17,19 +17,26 @@ import { discord } from "@/lib/profile"
  * запаздывает за реальностью.
  */
 
+/** Одна активность. Их может быть несколько сразу: игра, стрим и трек. */
+type Activity = {
+  name?: string | null
+  /** Тип от Discord: playing, listening, streaming, watching. */
+  type?: string | null
+  details?: string | null
+  state?: string | null
+  /** Обложка трека. Приходит только у Spotify-подобных активностей. */
+  cover?: string | null
+  startedAt?: number | null
+}
+
 /** Что приходит из облака. */
 type Presence = {
   status: "online" | "idle" | "dnd" | "offline" | string
   username?: string | null
   avatar?: string | null
-  activity?: {
-    name?: string | null
-    details?: string | null
-    state?: string | null
-    /** Обложка трека. Приходит только у Spotify-подобных активностей. */
-    cover?: string | null
-    startedAt?: number | null
-  } | null
+  activities?: Activity[]
+  /** Первая активность отдельно — для старых версий данных. */
+  activity?: Activity | null
   stale?: boolean
 }
 
@@ -39,6 +46,15 @@ const STATUS_COLOR: Record<string, string> = {
   idle: "#faa61a",
   dnd: "#f23f43",
   offline: "#80848e",
+}
+
+/** Глаголы по типу активности: Discord шлёт названия вперемешку. */
+const VERB: Record<string, string> = {
+  playing: "Играет в",
+  listening: "Слушает",
+  streaming: "Стримит",
+  watching: "Смотрит",
+  custom: "Занимается",
 }
 
 /**
@@ -75,6 +91,21 @@ function plural(n: number, one: string, few: string, many: string) {
   if (mod10 === 1) return one
   if (mod10 >= 2 && mod10 <= 4) return few
   return many
+}
+
+/** Три строки текста активности: что делает, что именно, сколько идёт. */
+function activityLines(activity: Activity, now: number | null) {
+  const lines: string[] = []
+
+  const verb = activity.type ? VERB[activity.type] : undefined
+  if (verb && activity.name) lines.push(`${verb} ${activity.name}`)
+  else if (activity.state) lines.push(activity.state)
+  else if (activity.name) lines.push(activity.name)
+
+  if (activity.details) lines.push(activity.details)
+  if (activity.startedAt && now) lines.push(`уже ${humanDuration(now - activity.startedAt)}`)
+
+  return lines
 }
 
 export function DiscordPresence() {
@@ -124,25 +155,17 @@ export function DiscordPresence() {
   if (presence.stale || presence.status === "offline") return null
 
   const color = STATUS_COLOR[presence.status] ?? STATUS_COLOR.offline
-  const activity = presence.activity
 
-  /*
-    Текст активности собирается из трёх возможных строк, и берутся они в том
-    порядке, в каком Discord их отдаёт. У игры заполнено `name`, у трека —
-    `state` («Listening to …») и `details` (название), поэтому порядок
-    разный, а вид одинаковый.
-  */
-  const lines: string[] = []
-  if (activity?.state) lines.push(activity.state)
-  else if (activity?.name) lines.push(`Играет в ${activity.name}`)
-  if (activity?.details) lines.push(activity.details)
-  if (activity?.startedAt && now) lines.push(`уже ${humanDuration(now - activity.startedAt)}`)
-
-  const hasActivity = lines.length > 0
-  const cover = activity?.cover
+  // Список приходит от бота; если его нет, берётся одиночная активность —
+  // так формат переживает старые данные, не дожидаясь новой записи.
+  const list = Array.isArray(presence.activities)
+    ? presence.activities
+    : presence.activity
+      ? [presence.activity]
+      : []
 
   return (
-    <div className="flex items-center gap-4">
+    <div className="flex items-start gap-4">
       {/*
         Аватар с точкой статуса. Точка лежит абсолютно на углу фотографии,
         а не сдвигается соседним элементом: раньше она стояла отдельным
@@ -171,17 +194,18 @@ export function DiscordPresence() {
       </span>
 
       <div className="min-w-0 flex-1">
-        {/*
-          Правая часть строки: обложка трека, если играет, иначе тег
-          сервера. Раньше здесь стояла галочка верификации, которой у
-          обычного аккаунта нет и которая ничего не значит.
-        */}
-        <div className="flex items-center gap-2">
+        <p className="flex items-center gap-2">
           <span className="truncate font-medium">
             {presence.username ?? "Discord"}
           </span>
 
-          {!hasActivity && discord.serverTag ? (
+          {/*
+            Тег сервера занимает то место, где у образца стоит обложка трека:
+            когда активностей нет — видно тег, когда есть — обложку.
+            Раньше здесь была галочка верификации, которой у обычного
+            аккаунта нет и которая ничего не значит.
+          */}
+          {list.length === 0 && discord.serverTag ? (
             <span
               className="bg-card/70 text-muted-foreground ml-auto inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-xs"
               title="Тег сервера"
@@ -190,33 +214,47 @@ export function DiscordPresence() {
               {discord.serverTag}
             </span>
           ) : null}
-        </div>
+        </p>
 
-        {hasActivity ? (
-          <p className="mt-1 space-y-0.5 text-sm leading-snug">
-            {lines.map((line, index) => (
-              <span key={index} className="block truncate">
-                {index === lines.length - 1 ? (
-                  <span className="text-muted-foreground">{line}</span>
-                ) : (
-                  line
-                )}
-              </span>
-            ))}
-          </p>
+        {list.length > 0 ? (
+          <ul className="mt-1 space-y-2">
+            {list.map((activity, index) => {
+              const lines = activityLines(activity, now)
+              if (lines.length === 0 && !activity.cover) return null
+
+              return (
+                <li key={index} className="flex items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    {lines.map((line, lineIndex) => (
+                      <span
+                        key={lineIndex}
+                        className={
+                          lineIndex === lines.length - 1
+                            ? "text-muted-foreground block truncate text-sm"
+                            : "block truncate text-sm"
+                        }
+                      >
+                        {line}
+                      </span>
+                    ))}
+                  </div>
+
+                  {activity.cover ? (
+                    <Image
+                      src={activity.cover}
+                      alt=""
+                      width={64}
+                      height={64}
+                      unoptimized
+                      className="size-16 shrink-0 rounded-lg"
+                    />
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
         ) : null}
       </div>
-
-      {hasActivity && cover ? (
-        <Image
-          src={cover}
-          alt=""
-          width={64}
-          height={64}
-          unoptimized
-          className="size-16 shrink-0 rounded-lg"
-        />
-      ) : null}
     </div>
   )
 }

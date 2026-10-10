@@ -121,11 +121,28 @@ async function handle(request) {
 
     const now = Date.now()
     const current = await PRESENCE.get(KEY, "json")
-    const activity = payload.activity || null
+    const previous = current && Array.isArray(current.activities) ? current.activities : []
+    const sameStatus = Boolean(current) && current.status === (payload.status || "online")
 
-    // Секунды игры копятся только пока статус живой, иначе после суток
-    // молчания карточка показывала бы «играет 400 дней».
-    const startedAt = activity ? (current?.activity?.startedAt ?? now) : null
+    // Активностей может быть несколько сразу: игра, стрим и трек. Раньше
+    // складывалась одна, и остальные молча пропадали.
+    const incoming = Array.isArray(payload.activities)
+      ? payload.activities
+      : payload.activity
+        ? [payload.activity]
+        : []
+
+    const activities = incoming.map((item) => {
+      /*
+        Время начала ищется по названию среди прошлых активностей. Игра или
+        трек, которые продолжаются, сохраняют свой счётчик, а новый трек
+        стартует заново. При смене статуса (ушёл в офлайн и вернулся)
+        счётчик обнуляется: после перерыва «играет 4 часа» было бы враньём.
+      */
+      const same = previous.find((prev) => prev && prev.name === item.name)
+      const keep = sameStatus && same && same.startedAt
+      return { ...item, startedAt: keep ? same.startedAt : now }
+    })
 
     await PRESENCE.put(
       KEY,
@@ -134,7 +151,9 @@ async function handle(request) {
         username: payload.username || null,
         avatar: payload.avatar || null,
         status: payload.status || "online",
-        activity: activity ? { ...activity, startedAt } : null,
+        activities,
+        // Первая активность дублируется для старых читателей.
+        activity: activities[0] || null,
         updatedAt: now,
       }),
       // Подстраховка от вечной записи, если бот больше никогда не придёт.
