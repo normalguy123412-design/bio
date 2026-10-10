@@ -133,7 +133,11 @@ export function ProfileRoom() {
               height={130}
               unoptimized
               priority
-              className="size-full object-cover"
+              className="size-full object-cover opacity-60"
+            />
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-t from-card/80 via-card/20 to-transparent"
             />
           </div>
 

@@ -151,7 +151,14 @@ export const discord = {
    * для этого не нужны. Сервер может быть чужим.
    */
   invite: "cQJ6bNn2ek",
-  presenceEndpoint: "https://discord-presence-bot.78-154-103-31.sslip.io/",
+  /**
+   * Откуда страница берёт «Играет в…».
+   *
+   * Данные кладёт туда бот (discord/bot), а хранит Worker
+   * (discord/worker). Адрес с https обязателен: страница живёт на
+   * https, и запрос с защищённой страницы на http браузер заблокирует.
+   */
+  presenceEndpoint: "https://discord-presence.niceguy-bio.workers.dev/",
 } as const
 
 /**

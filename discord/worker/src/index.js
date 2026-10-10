@@ -8,16 +8,19 @@
  * активности. Значит, кто-то должен принести эти данные изнутри Discord
  * наружу — это делает бот (см. ../bot), а хранит их это облако.
  *
- * Сайт (статический GitHub Pages) сюда только читает. Серверов у него нет,
- * поэтому и хранить больше негде.
+ * Сайт сюда только читает: он собран статически, своего сервера у него нет.
+ * Поэтому и хранить больше негде.
  *
- * Почему Workers. Бесплатного тарифа хватает с большим запасом: страница
- * опрашивает адрес раз в 15 секунд, то есть около шести тысяч запросов в
- * сутки, а лимит измеряется десятками миллионов.
+ * Почему синтаксис service worker, а не модули. Модули (`export default`)
+ * загружаются multipart-запросом, часть которого зовётся именем файла, и
+ * такой запрос не всегда собирается из-под API. Сервис-воркер грузится
+ * целиком одним `PUT` с типом `application/javascript`, и привязки в нём
+ * доступны как глобальные переменные — поэтому здесь `PRESENCE`, а не
+ * `env.PRESENCE`.
  *
- * Настройка (команды wrangler):
+ * Настройка:
  *   npm i -g wrangler
- *   wrangler kv namespace create PRESENCE     # вернёт id — вписать в wrangler.toml
+ *   wrangler kv namespace create PRESENCE     # id — в wrangler.toml
  *   wrangler secret put WRITE_SECRET          # пароль, который знает и бот
  *   wrangler deploy
  *
@@ -37,89 +40,113 @@ const STALE_AFTER_SECONDS = 60 * 5
 const KEY = "current"
 
 const CORS = {
-  // Страница живёт на github.io, а статус — на workers.dev: это разные
-  // источники, и без заголовка браузер не отдаст ответ компоненту.
+  // Страница живёт на bio-dt6.pages.dev, а статус — на workers.dev: это
+  // разные источники, и без заголовка браузер не отдаст ответ компоненту.
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "Content-Type, x-secret",
   "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
 }
 
-function json(body, status = 200) {
+function json(body, status) {
   return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...CORS, "Content-Type": "application/json; charset=utf-8" },
+    status: status || 200,
+    headers: Object.assign({}, CORS, {
+      "Content-Type": "application/json; charset=utf-8",
+    }),
   })
 }
 
-export default {
-  async fetch(request, env) {
-    if (request.method === "OPTIONS") {
-      return new Response(null, { headers: CORS })
+async function handle(request) {
+  if (request.method === "OPTIONS") {
+    return new Response(null, { headers: CORS })
+  }
+
+  if (request.method === "GET") {
+    const raw = await PRESENCE.get(KEY)
+    if (!raw) {
+      // Не ошибка: бот ещё ни разу не писал, и страница должна показать
+      // «офлайн», а не пустую карточку с ошибкой в консоли.
+      return json({ status: "offline", stale: true })
     }
 
-    if (request.method === "GET") {
-      const raw = await env.PRESENCE.get(KEY)
-      if (!raw) {
-        // Не ошибка: бот ещё ни разу не писал, и страница должна показать
-        // «офлайн», а не пустую карточку с ошибкой в консоли.
-        return json({ status: "offline", stale: true })
-      }
-
-      let data
-      try {
-        data = JSON.parse(raw)
-      } catch {
-        return json({ status: "offline", stale: true })
-      }
-
-      // Данные не удаляются, а просто устаревают: если бот выключился,
-      // через несколько минут карточка сама станет «офлайн».
-      const stale = Date.now() - (data.updatedAt ?? 0) > STALE_AFTER_SECONDS * 1000
-
-      return json({ ...data, stale })
+    let data
+    try {
+      data = JSON.parse(raw)
+    } catch {
+      return json({ status: "offline", stale: true })
     }
 
-    if (request.method === "PUT") {
-      if (request.headers.get("x-secret") !== env.WRITE_SECRET) {
-        return json({ error: "forbidden" }, 403)
-      }
+    // Данные не удаляются, а просто устаревают: если бот выключился,
+    // через несколько минут карточка сама станет «офлайн».
+    const stale = Date.now() - (data.updatedAt || 0) > STALE_AFTER_SECONDS * 1000
 
-      let payload
-      try {
-        payload = await request.json()
-      } catch {
-        return json({ error: "bad json" }, 400)
-      }
+    return json(Object.assign({}, data, { stale }))
+  }
 
-      if (typeof payload?.userId !== "string") {
-        return json({ error: "userId is required" }, 400)
-      }
-
-      const now = Date.now()
-      const current = await env.PRESENCE.get(KEY, "json")
-      const activity = payload.activity ?? null
-
-      // Секунды игры копятся только пока статус живой, иначе после суток
-      // молчания карточка показывала бы «играет 400 дней».
-      const startedAt = activity ? (current?.activity?.startedAt ?? now) : null
-
-      await env.PRESENCE.put(
-        KEY,
-        JSON.stringify({
-          userId: payload.userId,
-          username: payload.username ?? null,
-          avatar: payload.avatar ?? null,
-          status: payload.status ?? "online",
-          activity: activity ? { ...activity, startedAt } : null,
-          updatedAt: now,
-        }),
-        // Подстраховка от вечной записи, если бот больше никогда не придёт.
-        { expirationTtl: 60 * 60 * 24 },
-      )
-
-      return json({ ok: true })
+  if (request.method === "PUT") {
+    if (request.headers.get("x-secret") !== WRITE_SECRET) {
+      return json({ error: "forbidden" }, 403)
     }
 
-    return json({ error: "method not allowed" }, 405)
-  },
+    let text
+    try {
+      text = await request.text()
+    } catch {
+      return json({ error: "cannot read body" }, 400)
+    }
+
+    /*
+      id берётся из текста запроса, а не из распарсенного объекта.
+      Снежинки Discord длиннее 2^53, поэтому JSON.parse превращает их в
+      число с округлением: 775664166538706954 стал бы 775664166538707000,
+      и в базу легло бы уже чужое id. Здесь цифры сохраняются как есть.
+
+      Допускаются и число, и текст: discord.py отдаёт id числом, обычные
+      JSON-клиенты присылают строкой. Раньше стояла строгая проверка
+      typeof === "string", по которой бот на discord.py получал 400-м,
+      молча повторял его каждые полминуты и ни разу ничего не записал.
+    */
+    const found = text.match(/"userId"\s*:\s*"?(\d+)"?/)
+    const userId = found ? found[1] : null
+    if (!userId) {
+      return json({ error: "userId is required" }, 400)
+    }
+
+    let payload
+    try {
+      payload = JSON.parse(text)
+    } catch {
+      return json({ error: "bad json" }, 400)
+    }
+
+    const now = Date.now()
+    const current = await PRESENCE.get(KEY, "json")
+    const activity = payload.activity || null
+
+    // Секунды игры копятся только пока статус живой, иначе после суток
+    // молчания карточка показывала бы «играет 400 дней».
+    const startedAt = activity ? (current?.activity?.startedAt ?? now) : null
+
+    await PRESENCE.put(
+      KEY,
+      JSON.stringify({
+        userId,
+        username: payload.username || null,
+        avatar: payload.avatar || null,
+        status: payload.status || "online",
+        activity: activity ? { ...activity, startedAt } : null,
+        updatedAt: now,
+      }),
+      // Подстраховка от вечной записи, если бот больше никогда не придёт.
+      { expirationTtl: 60 * 60 * 24 },
+    )
+
+    return json({ ok: true })
+  }
+
+  return json({ error: "method not allowed" }, 405)
 }
+
+addEventListener("fetch", (event) => {
+  event.respondWith(handle(event.request))
+})
