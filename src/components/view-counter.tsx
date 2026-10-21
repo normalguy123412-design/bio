@@ -16,10 +16,10 @@ import { views } from "@/lib/profile"
  * добавляло бы два просмотра. Флаг живёт в useRef — он переживает
  * повторный рендер, но не переживает перезагрузку, как и нужно.
  *
- * Если адрес не задан или сервис не отвечает, ничего не рисуется: пустое
- * место или «0» смотрелось бы хуже, чем отсутствие счётчика.
+ * Если адрес не задан или сервис не отвечает, состояние остаётся `null`:
+ * показываются не «0» и не ошибка, а ничего.
  */
-export function ViewCounter() {
+export function useViewCount(): number | null {
   const [count, setCount] = React.useState<number | null>(null)
   const counted = React.useRef(false)
 
@@ -46,17 +46,29 @@ export function ViewCounter() {
     return () => controller.abort()
   }, [])
 
+  return count
+}
+
+/** Склонение слова «просмотр». */
+function viewing(count: number) {
+  return count % 10 === 1 && count % 100 !== 11
+    ? "просмотр"
+    : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)
+      ? "просмотра"
+      : "просмотров"
+}
+
+/** Полная подпись «N просмотров» — живёт в карточке раздела. */
+export function ViewCounter() {
+  const count = useViewCount()
+
   if (count === null) return null
 
   return (
-    <p className="text-muted-foreground flex items-center gap-1.5 text-sm">
-      <EyeIcon className="size-4" />
-      {new Intl.NumberFormat("ru-RU").format(count)}{" "}
-      {count % 10 === 1 && count % 100 !== 11
-        ? "просмотр"
-        : count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)
-          ? "просмотра"
-          : "просмотров"}
+    <p className="flex items-center gap-1.5 text-[11px] text-[#7d8894]">
+      <EyeIcon className="size-3.5" />
+      {new Intl.NumberFormat("ru-RU").format(count)}
+      {viewing(count)}
     </p>
   )
 }

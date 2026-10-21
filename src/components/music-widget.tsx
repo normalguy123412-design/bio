@@ -3,35 +3,36 @@
 import * as React from "react"
 import Image from "next/image"
 import {
-  ChevronDownIcon,
   MusicIcon,
   PauseIcon,
   PlayIcon,
-  RotateCcwIcon,
   Volume1Icon,
   Volume2Icon,
   VolumeXIcon,
 } from "lucide-react"
-import { AnimatePresence, motion } from "motion/react"
-import { emojis, track } from "@/lib/profile"
+import { cn } from "cn"
+import { track } from "@/lib/profile"
 
 /**
- * НАСТРОЙКИ, КОТОРЫЕ ПЕРЕЖИВАЮТ ПЕРЕЗАГРУЗКУ.
+ * МУЗЫКА ОБЩАЯ ДЛЯ ВСЕЙ СТРАНИЦЫ.
  *
- * Всё в localStorage: громкость, отключение звука и раскрытое состояние
- * панели. Без этого при каждой перезагрузке звук возвращался к половине, и
- * настройку приходилось бы подбирать заново.
+ * Звук один и живёт в провайдере: заставка просит разрешения, «остров» и
+ * музыкальный уголок запускают и останавливают трек, а карточка плеера
+ * рисует по слушанию волну. Все они получают одно и то же состояние через
+ * контекст — иначе у каждого значка была бы своя копия проигрывателя.
  *
- * Запись обёрнута в try/catch: в приватном режиме Safari и при запрете
- * хранилища localStorage бросает исключение, и это не повод ломать плеер.
+ * Почему без автозапуска. Браузер запрещает включать звук без действия
+ * пользователя, и обойти это нельзя. Раньше страница пыталась включить
+ * трек сама, ловила отказ и потом заново пыталась при каждом нажатии —
+ * из-за этого музыка то включалась, то нет, и выглядело это как сбой.
+ * Теперь выбор делает заставка: «Включить музыку» или «Без звука».
  */
 const STORE = {
   volume: "bio:volume",
   muted: "bio:muted",
-  open: "bio:open",
 } as const
 
-function readStored(key: string, fallback: string | null) {
+function readStored(key: string, fallback: string) {
   try {
     return window.localStorage.getItem(key) ?? fallback
   } catch {
@@ -47,117 +48,68 @@ function writeStored(key: string, value: string) {
   }
 }
 
-function formatTime(seconds: number) {
+export function formatTime(seconds: number) {
   if (!Number.isFinite(seconds)) return "0:00"
   const total = Math.max(0, Math.floor(seconds))
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`
 }
 
-/** Градиент заливки ползунка: пройдено одним цветом, остальное — приглушённое. */
-function trackStyle(ratio: number, idle: string) {
-  const stop = `${(Math.min(1, Math.max(0, ratio)) * 100).toFixed(2)}%`
-  return {
-    background: `linear-gradient(90deg, #38bdf8 0%, #22d3ee ${stop}, ${idle} ${stop})`,
-  }
+/** Почему у плеера стоит один <audio>, но не два: см. выше. */
+type MusicApi = {
+  /** Заставка уже скрыта — первое нажатие произошло. */
+  started: boolean
+  /** Трек сейчас играет (после полной загрузки файла значение честное). */
+  playing: boolean
+  /** Браузер не смог запустить трек — строка с извинением. */
+  failed: boolean
+  current: number
+  duration: number
+  volume: number
+  muted: boolean
+  /** Запустить или остановить трек. Первое нажатие всегда начинает его. */
+  toggle: () => void
+  /** Выбор, сделанный на заставке: показывать сайт и, возможно, включить звук. */
+  begin: (withMusic: boolean) => void
+  /** Перемотка: время от 0 до 1. */
+  seekTo: (ratio: number) => void
+  setVolume: (value: number) => void
+  toggleMute: () => void
+  /** Анализатор для рисования волны. До запуска графа тут `null`. */
+  wave: React.RefObject<AnalyserNode | null>
 }
 
-/**
- * МУЗЫКАЛЬНЫЙ ВИДЖЕТ — круглый значок звука в углу.
- *
- * Панель висит поверх любого отдела и ни с чем не пересекается.
- *
- * Почему без автозапуска. Браузер запрещает включать звук без действия
- * пользователя, и обойти это нельзя. Раньше страница пыталась включить
- * трек сама, ловила отказ и потом заново пыталась при каждом нажатии — из-за
- * этого музыка то включалась, то нет, и выглядело это как сбой. Теперь
- * всё однозначно: при открытии висит экран «нажмите, чтобы начать», и
- * первое же нажатие включает музыку. Никаких молчаливых попыток.
- */
-export function MusicWidget() {
+const MusicContext = React.createContext<MusicApi | null>(null)
+
+export function useMusic(): MusicApi {
+  const api = React.useContext(MusicContext)
+  if (!api) throw new Error("MusicProvider не найден выше по дереву")
+  return api
+}
+
+export function MusicProvider({ children }: { children: React.ReactNode }) {
   const audioRef = React.useRef<HTMLAudioElement>(null)
-  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const wave = React.useRef<AnalyserNode | null>(null)
+  const graphReady = React.useRef(false)
+
   const [started, setStarted] = React.useState(false)
-  const [open, setOpen] = React.useState(false)
   const [playing, setPlaying] = React.useState(false)
   const [failed, setFailed] = React.useState(false)
   const [muted, setMuted] = React.useState(false)
-  const [volume, setVolume] = React.useState(0.5)
+  const [volume, setVolumeState] = React.useState(0.5)
   const [current, setCurrent] = React.useState(0)
   const [duration, setDuration] = React.useState(0)
-  const [coverFailed, setCoverFailed] = React.useState(false)
-
-  const analyser = React.useRef<AnalyserNode | null>(null)
-  const levels = React.useRef<Float32Array | null>(null)
-  const visualizerStarted = React.useRef(false)
-  const frame = React.useRef(0)
-
-  /** Ровная линия в покое и на любом отказе от визуализатора. */
-  const drawIdle = React.useCallback(() => {
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext("2d")
-    if (!canvas || !ctx) return
-    const { width, height } = canvas
-    ctx.clearRect(0, 0, width, height)
-    ctx.fillStyle = "rgba(255, 255, 255, 0.16)"
-    const bars = 48
-    const step = width / bars
-    for (let i = 0; i < bars; i += 1) {
-      ctx.fillRect(i * step, (height - 3) / 2, step * 0.55, 3)
-    }
-  }, [])
-
-  /**
-   * Кадр волны. Следующий кадр планируется на имя самой функции — так
-   * рекурсия не идёт через внешнюю переменную, которую правило
-   * react-hooks/immutability считает изменяемой во время рендера.
-   */
-  const drawWave = React.useCallback(function step() {
-    const canvas = canvasRef.current
-    const ctx = canvas?.getContext("2d")
-    const node = analyser.current
-    if (!canvas || !ctx || !node) return
-
-    const { width, height } = canvas
-    const data = new Uint8Array(node.frequencyBinCount)
-    node.getByteFrequencyData(data)
-
-    const bars = 48
-    const gap = width / bars
-    const perBar = Math.floor(data.length / bars)
-    const level = levels.current ?? (levels.current = new Float32Array(bars))
-
-    const gradient = ctx.createLinearGradient(0, 0, width, 0)
-    gradient.addColorStop(0, "#38bdf8")
-    gradient.addColorStop(0.5, "#22d3ee")
-    gradient.addColorStop(1, "#34d399")
-    ctx.fillStyle = gradient
-    ctx.clearRect(0, 0, width, height)
-
-    for (let i = 0; i < bars; i += 1) {
-      let peak = 0
-      for (let j = 0; j < perBar; j += 1) peak = Math.max(peak, data[i * perBar + j])
-      // Смягчаем, иначе столбики дёргаются на каждом кадре.
-      level[i] = level[i] * 0.65 + (peak / 255) * 0.35
-      const barHeight = Math.max(3, level[i] * height)
-      ctx.fillRect(i * gap, (height - barHeight) / 2, gap * 0.55, barHeight)
-    }
-
-    frame.current = requestAnimationFrame(step)
-  }, [])
 
   /**
    * Подключение к Web Audio.
    *
    * `createMediaElementSource` навсегда переводит звук в Web Audio, поэтому
-   * подключать его можно только на работающем контексте: иначе плеер играл
-   * бы в тишине навсегда.
+   * подключать элемент можно только один раз на страницу — флаг в ref это
+   * гарантирует. Визуализатор нужен лишь карточке плеера, но проще
+   * подключить его здесь и отдать через контекст.
    */
-  const startVisualizer = React.useCallback(async () => {
-    // Флаг живёт в ref, а не в состоянии: подключать плеер к Web Audio
-    // можно только один раз на элемент, и перерисовывать всё дерево из-за
-    // этого флага незачем.
-    if (visualizerStarted.current) return
-    visualizerStarted.current = true
+  const startGraph = React.useCallback(() => {
+    if (graphReady.current) return
+    graphReady.current = true
 
     const audio = audioRef.current
     if (!audio) return
@@ -170,42 +122,86 @@ export function MusicWidget() {
     if (!Ctx) return
 
     try {
-      const ctxAudio = new Ctx()
-      await ctxAudio.resume()
-      if (ctxAudio.state !== "running") throw new Error("контекст не запустился")
+      const audioContext = new Ctx()
+      void audioContext.resume()
 
-      const node = ctxAudio.createAnalyser()
+      const node = audioContext.createAnalyser()
       node.fftSize = 512
       node.smoothingTimeConstant = 0.75
-      ctxAudio.createMediaElementSource(audio).connect(node)
-      node.connect(ctxAudio.destination)
-
-      analyser.current = node
-      drawWave()
+      audioContext.createMediaElementSource(audio).connect(node)
+      node.connect(audioContext.destination)
+      wave.current = node
     } catch {
-      analyser.current = null
-      drawIdle()
+      // Отказ Web Audio — не повод ломать плеер: волну просто не рисуем.
+      wave.current = null
     }
-  }, [drawIdle, drawWave])
+  }, [])
 
-  /** Одно нажатие пользователя: включаем трек и снимаем заставку. */
-  const begin = React.useCallback(async () => {
+  /** Первое нажатие на заставке: спрятать её и, возможно, включить звук. */
+  const begin = React.useCallback((withMusic: boolean) => {
+    setStarted(true)
+    const audio = audioRef.current
+    if (!audio || !withMusic) return
+
+    // Граф строим не дожидаясь: вызов play() обязан остаться в обработчике
+    // события, как только await — браузер забывает, что нажимал пользователь.
+    startGraph()
+
+    audio
+      .play()
+      .then(() => setFailed(false))
+      .catch(() => setFailed(true))
+  }, [startGraph])
+
+  const toggle = React.useCallback(() => {
     const audio = audioRef.current
     if (!audio) return
 
-    void startVisualizer()
-    setStarted(true)
-
-    try {
-      await audio.play()
-      setFailed(false)
-    } catch {
-      setFailed(true)
+    if (!started) {
+      begin(true)
+      return
     }
-  }, [startVisualizer])
 
-  // Настройки читаются один раз: до первого нажатия звук всё равно не идёт,
-  // а состояние панели восстановится само из хранилища.
+    if (audio.paused) {
+      void startGraph()
+      audio
+        .play()
+        .then(() => setFailed(false))
+        .catch(() => setFailed(true))
+    } else {
+      audio.pause()
+    }
+  }, [begin, started, startGraph])
+
+  const seekTo = React.useCallback((ratio: number) => {
+    const audio = audioRef.current
+    if (!audio || !Number.isFinite(audio.duration)) return
+    audio.currentTime = Math.min(1, Math.max(0, ratio)) * audio.duration
+  }, [])
+
+  const setVolume = React.useCallback((value: number) => {
+    const next = Math.min(1, Math.max(0, value))
+    const audio = audioRef.current
+    if (audio) {
+      audio.volume = next
+      if (next > 0 && audio.muted) {
+        audio.muted = false
+        setMuted(false)
+      }
+    }
+    setVolumeState(next)
+    writeStored(STORE.volume, String(next))
+  }, [])
+
+  const toggleMute = React.useCallback(() => {
+    const audio = audioRef.current
+    if (!audio) return
+    audio.muted = !audio.muted
+    setMuted(audio.muted)
+    writeStored(STORE.muted, audio.muted ? "1" : "0")
+  }, [])
+
+  // Настройки читаются один раз: звук ещё не идёт, а состояние восстановится.
   React.useEffect(() => {
     const audio = audioRef.current
     if (!audio) return
@@ -219,12 +215,9 @@ export function MusicWidget() {
 
     audio.volume = restored
     audio.muted = storedMuted
-    setVolume(restored)
+    setVolumeState(restored)
     setMuted(storedMuted)
-    setOpen(readStored(STORE.open, "0") === "1")
-
-    drawIdle()
-  }, [drawIdle])
+  }, [])
 
   React.useEffect(() => {
     const audio = audioRef.current
@@ -232,294 +225,352 @@ export function MusicWidget() {
 
     const onLoaded = () => setDuration(audio.duration)
     const onTime = () => setCurrent(audio.currentTime)
-    const onEnded = () => {
-      setPlaying(false)
-      setCurrent(0)
-    }
     const onError = () => setFailed(true)
 
     audio.addEventListener("loadedmetadata", onLoaded)
     audio.addEventListener("timeupdate", onTime)
-    audio.addEventListener("ended", onEnded)
     audio.addEventListener("error", onError)
 
     return () => {
-      cancelAnimationFrame(frame.current)
       audio.removeEventListener("loadedmetadata", onLoaded)
       audio.removeEventListener("timeupdate", onTime)
-      audio.removeEventListener("ended", onEnded)
       audio.removeEventListener("error", onError)
     }
   }, [])
 
-  const toggle = async () => {
-    const audio = audioRef.current
-    if (!audio) return
-
-    setOpen(true)
-
-    if (!started) {
-      await begin()
-      return
-    }
-
-    if (audio.paused) {
-      try {
-        await audio.play()
-        setFailed(false)
-      } catch {
-        setFailed(true)
-      }
-    } else {
-      audio.pause()
-    }
-  }
-
-  const setVolumeAndSave = (value: number) => {
-    const next = Math.min(1, Math.max(0, value))
-    const audio = audioRef.current
-    if (audio) audio.volume = next
-    setVolume(next)
-    writeStored(STORE.volume, String(next))
-  }
-
-  const toggleMute = () => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.muted = !audio.muted
-    setMuted(audio.muted)
-    writeStored(STORE.muted, audio.muted ? "1" : "0")
-  }
-
-  const collapse = () => {
-    setOpen(false)
-    writeStored(STORE.open, "0")
-  }
-
-  const restart = async () => {
-    const audio = audioRef.current
-    if (!audio) return
-    audio.currentTime = 0
-    setCurrent(0)
-    if (audio.paused) await toggle()
-  }
-
-  /** Значок громкости отражает реальный уровень, а не только факт отключения. */
-  const VolumeIcon =
-    muted || volume === 0 ? VolumeXIcon : volume < 0.5 ? Volume1Icon : Volume2Icon
+  const api = React.useMemo<MusicApi>(
+    () => ({
+      started,
+      playing,
+      failed,
+      current,
+      duration,
+      volume,
+      muted,
+      toggle,
+      begin,
+      seekTo,
+      setVolume,
+      toggleMute,
+      wave,
+    }),
+    [started, playing, failed, current, duration, volume, muted, toggle, begin, seekTo, setVolume, toggleMute],
+  )
 
   return (
-    <>
+    <MusicContext value={api}>
+      {children}
+
+      {/*
+        Сам трек: короткий, поэтому играет по кругу. Смена иконок и надписей
+        происходит в тех компонентах, что слушают контекст, — здесь держат
+        только слушатели событий файла.
+      */}
       <audio
         ref={audioRef}
         src={track.src}
         preload="auto"
-        /* Трек короткий, поэтому играет по кругу — как на странице-образце. */
         loop
         onPlay={() => setPlaying(true)}
         onPause={() => setPlaying(false)}
       />
+    </MusicContext>
+  )
+}
 
-      {/*
-        Заставка. Браузер всё равно не пускает музыку без действия
-        пользователя, поэтому вместо тихих попыток включить трек самому
-        показывается предложение нажать. Одно нажатие в любом месте экрана
-        запускает музыку и убирает заставку.
+/* ---------------- Громкость ---------------- */
 
-        Содержимое и размытие взяты из настроек страницы-образца: там стоит
-        `reveal_screen_blur: 15`, а текстом заставки являются только два
-        эмодзи с линией под ними (`reveal_screen_text`). Никаких подписей
-        и кнопок поверх — иначе заставка выглядит не как на образце.
-      */}
-      <AnimatePresence>
-        {!started ? (
-          <motion.button
-            type="button"
-            aria-label="Нажмите, чтобы включить музыку"
-            onClick={() => void begin()}
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.5 }}
-            className="group absolute inset-0 z-40 flex cursor-pointer flex-col items-center justify-center gap-6 backdrop-blur-[15px]"
-          >
-            {/* Эмодзи стоят на заставке, а не на баннере: так же, как на
-                образце, и сразу видны при первом открытии. */}
-            <span className="flex items-center">
-              {[emojis.left, emojis.right].map((src, index) => (
-                <Image
-                  key={src}
-                  src={src}
-                  alt=""
-                  width={48}
-                  height={48}
-                  unoptimized
-                  priority
-                  className={index === 1 ? "-ml-3 size-11" : "size-12"}
-                />
-              ))}
-            </span>
+/**
+ * Ползунок громкости: значок + полоса + процент. В поповере «острова»
+ * рисуется узким, в карточке плеера — во всю ширину (`wide`). Значение
+ * переживает перезагрузку (localStorage).
+ *
+ * Значок собирается прямо в JSX тернарником: локальная переменная
+ * «Компонент» заставляет правило хуков считать, что компонент создан
+ * во время рендера.
+ */
+export function VolumeSlider({ wide = false }: { wide?: boolean }) {
+  const { volume, muted, setVolume, toggleMute } = useMusic()
 
-            {/* Линия под эмодзи — тег `[hr-theme]` в тексте заставки. */}
-            <span
-              aria-hidden
-              className="border-border/30 w-24 border-t transition-colors group-hover:border-primary"
-            />
-          </motion.button>
-        ) : null}
-      </AnimatePresence>
-
-      {/* Значок в углу: остаётся на месте, пока панель не открыта. */}
+  return (
+    <div className={cn("flex items-center px-0.5", wide ? "mt-2 w-full gap-2.5" : "gap-2")}>
       <button
         type="button"
-        onClick={() => (open ? collapse() : void toggle())}
-        aria-label={open ? "Свернуть плеер" : "Открыть плеер"}
-        aria-expanded={open}
-        className="border-border bg-background/80 fixed right-5 bottom-5 z-50 grid size-12 place-items-center rounded-full border shadow-lg backdrop-blur-lg transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:outline-none"
+        onClick={toggleMute}
+        aria-label={muted ? "Включить звук" : "Выключить звук"}
+        className="text-[#7d8894] hover:text-foreground grid shrink-0 cursor-pointer place-items-center transition-colors focus-visible:outline-none"
       >
-        {open ? <ChevronDownIcon className="size-5" /> : <VolumeIcon className="size-5" />}
-
-        {/* Кольцо напоминает: музыку ещё не включили. */}
-        {!playing ? (
-          <span
-            aria-hidden
-            className="border-primary absolute inset-0 animate-ping rounded-full border-2 opacity-75"
-          />
-        ) : null}
+        {muted || volume === 0 ? (
+          <VolumeXIcon className="size-3.5" />
+        ) : volume < 0.5 ? (
+          <Volume1Icon className="size-3.5" />
+        ) : (
+          <Volume2Icon className="size-3.5" />
+        )}
       </button>
 
-      <AnimatePresence>
-        {open ? (
-          <motion.div
-            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 24, scale: 0.96 }}
-            transition={{ type: "spring", stiffness: 320, damping: 30 }}
-            className="border-border bg-card/95 fixed right-5 bottom-20 z-50 w-[min(22rem,calc(100vw-2.5rem))] rounded-2xl border p-4 shadow-2xl backdrop-blur-xl"
-          >
-            <div className="flex items-center gap-3">
-              {coverFailed ? (
-                <div
-                  aria-hidden
-                  className="from-primary/40 to-muted grid size-16 shrink-0 place-items-center rounded-lg bg-gradient-to-br"
-                >
-                  <MusicIcon className="size-6 text-foreground/70" />
-                </div>
-              ) : (
-                /* Обложка не обязательна: если файла нет, рисуем заглушку. */
-                <Image
-                  src={track.cover}
-                  alt=""
-                  width={64}
-                  height={64}
-                  unoptimized
-                  onError={() => setCoverFailed(true)}
-                  className="size-16 shrink-0 rounded-lg object-cover"
-                />
-              )}
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={muted ? 0 : volume}
+        onChange={(event) => setVolume(Number(event.target.value))}
+        aria-label="Громкость"
+        style={{ ["--v" as string]: `${volume * 100}%` }}
+        className={cn("rng", wide && "rng-wide")}
+      />
 
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">{track.title}</p>
-                <p className="text-muted-foreground truncate text-xs">
-                  {track.artist}
-                </p>
-              </div>
+      {wide ? (
+        <span className="w-8 shrink-0 text-right font-mono text-[10px] tabular-nums text-[#7d8894]">
+          {Math.round(volume * 100)}%
+        </span>
+      ) : null}
+    </div>
+  )
+}
 
-              <button
-                type="button"
-                onClick={toggleMute}
-                aria-label={muted ? "Включить звук" : "Выключить звук"}
-                className="text-muted-foreground hover:text-foreground grid size-8 shrink-0 place-items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              >
-                <VolumeIcon className="size-4" />
-              </button>
-            </div>
+/**
+ * Пилюля громкости для «острова» и музыкального уголка: значок, из-под
+ * которого выплывает стеклянная табличка с ползунком.
+ */
+export function VolumeControl({ className, popClassName }: { className?: string; popClassName?: string }) {
+  const { volume, muted } = useMusic()
+  const [open, setOpen] = React.useState(false)
+  const boxRef = React.useRef<HTMLDivElement>(null)
 
-            <canvas
-              ref={canvasRef}
-              width={560}
-              height={40}
-              aria-hidden
-              className="mt-3 block h-9 w-full"
-            />
+  // Клик мимо пилюли закрывает её: слушатель ставится, пока открыта.
+  React.useEffect(() => {
+    if (!open) return
+    const away = (event: PointerEvent) => {
+      if (!boxRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener("pointerdown", away)
+    return () => document.removeEventListener("pointerdown", away)
+  }, [open])
 
-            <div className="mt-2 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={toggle}
-                aria-label={playing ? "Пауза" : "Слушать трек"}
-                className="border-border hover:border-primary hover:text-primary grid size-10 shrink-0 place-items-center rounded-full border transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              >
-                {playing ? (
-                  <PauseIcon className="size-4" />
-                ) : (
-                  <PlayIcon className="size-4" />
-                )}
-              </button>
+  return (
+    <div ref={boxRef} className={cn("vol-pill", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-label="Громкость"
+        aria-expanded={open}
+        className="vol-trigger"
+      >
+        {muted || volume === 0 ? (
+          <VolumeXIcon aria-hidden />
+        ) : volume < 0.5 ? (
+          <Volume1Icon aria-hidden />
+        ) : (
+          <Volume2Icon aria-hidden />
+        )}
+      </button>
 
-              <span className="text-muted-foreground font-mono text-xs tabular-nums">
-                {formatTime(current)}
-              </span>
+      {open ? (
+        <div className={cn("vol-pop", popClassName)}>
+          <VolumeSlider />
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={0.1}
-                value={duration ? (current / duration) * 100 : 0}
-                onChange={(event) => {
-                  const audio = audioRef.current
-                  if (!audio || !duration) return
-                  audio.currentTime = (Number(event.target.value) / 100) * duration
-                }}
-                aria-label="Перемотка трека"
-                style={trackStyle(
-                  duration ? current / duration : 0,
-                  "oklch(0.269 0 0)"
-                )}
-                className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full focus-visible:ring-2 focus-visible:outline-none"
-              />
+/* ---------------- Полоса перемотки ---------------- */
 
-              <span className="text-muted-foreground font-mono text-xs tabular-nums">
-                {formatTime(duration)}
-              </span>
+/** Полоса перемотки: клик и перетаскивание переводят позицию в seekTo. */
+function Seekbar({ ratio }: { ratio: number }) {
+  const { seekTo } = useMusic()
+  const barRef = React.useRef<HTMLDivElement>(null)
+  const dragging = React.useRef(false)
 
-              <button
-                type="button"
-                onClick={restart}
-                aria-label="Сначала"
-                className="text-muted-foreground hover:text-foreground grid size-8 shrink-0 place-items-center rounded-full transition-colors focus-visible:ring-2 focus-visible:outline-none"
-              >
-                <RotateCcwIcon className="size-3.5" />
-              </button>
-            </div>
+  const at = (clientX: number) => {
+    const rect = barRef.current?.getBoundingClientRect()
+    if (!rect || rect.width === 0) return 0
+    return (clientX - rect.left) / rect.width
+  }
 
-            {/* Громкость. Значение сохраняется и переживает перезагрузку. */}
-            <div className="mt-3 flex items-center gap-3">
-              <VolumeIcon className="text-muted-foreground size-4 shrink-0" />
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={volume}
-                onChange={(event) => setVolumeAndSave(Number(event.target.value))}
-                aria-label="Громкость"
-                style={trackStyle(volume, "oklch(0.269 0 0)")}
-                className="h-1 min-w-0 flex-1 cursor-pointer appearance-none rounded-full focus-visible:ring-2 focus-visible:outline-none"
-              />
-              <span className="text-muted-foreground w-9 shrink-0 text-right font-mono text-xs tabular-nums">
-                {Math.round(volume * 100)}%
-              </span>
-            </div>
+  return (
+    <div
+      ref={barRef}
+      role="slider"
+      aria-label="Перемотка трека"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(ratio * 100)}
+      tabIndex={0}
+      className="seekball"
+      onPointerDown={(event) => {
+        dragging.current = true
+        event.currentTarget.setPointerCapture(event.pointerId)
+        seekTo(at(event.clientX))
+      }}
+      onPointerMove={(event) => {
+        if (dragging.current) seekTo(at(event.clientX))
+      }}
+      onPointerUp={() => {
+        dragging.current = false
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "ArrowLeft") {
+          event.preventDefault()
+          seekTo(ratio - 0.02)
+        }
+        if (event.key === "ArrowRight") {
+          event.preventDefault()
+          seekTo(ratio + 0.02)
+        }
+      }}
+    >
+      <span style={{ ["--p" as string]: `${ratio * 100}%` }}>
+        <i />
+      </span>
+    </div>
+  )
+}
 
-            {failed ? (
-              <p className="text-muted-foreground mt-2 text-xs">
-                Браузер не смог запустить трек — попробуйте нажать ещё раз.
-              </p>
-            ) : null}
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-    </>
+/* ---------------- Карточка плеера ---------------- */
+
+/**
+ * КАРТОЧКА ПЛЕЕРА.
+ *
+ * Одна обложка, один трек по кругу и волна: пока музыка играет, частоты
+ * из анализатора кладутся в экран за кнопкой; в тишине рисуется прежняя
+ * ровная полоска, чтобы карточка не пустовала.
+ */
+export function PlayerCard({ className }: { className?: string }) {  const { playing, started, failed, current, duration, toggle, wave } = useMusic()
+  const canvasRef = React.useRef<HTMLCanvasElement>(null)
+  const levels = React.useRef<Float32Array | null>(null)
+  const frame = React.useRef(0)
+  const [coverFailed, setCoverFailed] = React.useState(false)
+
+  /** Ровная линия в покое и на любом отказе от анализатора. */
+  const drawIdle = React.useCallback(() => {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext("2d")
+    if (!canvas || !ctx) return
+
+    const { width, height } = canvas
+    ctx.clearRect(0, 0, width, height)
+    ctx.fillStyle = "rgba(231, 236, 241, 0.14)"
+    const bars = 48
+    const step = width / bars
+    for (let i = 0; i < bars; i += 1) {
+      ctx.fillRect(i * step, (height - 3) / 2, step * 0.55, 3)
+    }
+  }, [])
+
+  /** Один кадр волны; кадр за кадром планирует сама — так рекурсия не
+   *  идёт через внешнюю переменную, которую lint считает изменяемой. */
+  const drawWave = React.useCallback(function step() {
+    const canvas = canvasRef.current
+    const ctx = canvas?.getContext("2d")
+    const node = wave.current
+    if (!canvas || !ctx || !node) return
+
+    const { width, height } = canvas
+    const data = new Uint8Array(node.frequencyBinCount)
+    node.getByteFrequencyData(data)
+
+    const bars = 48
+    const gap = width / bars
+    const perBar = Math.floor(data.length / bars)
+    const level = levels.current ?? (levels.current = new Float32Array(bars))
+
+    ctx.clearRect(0, 0, width, height)
+
+    const gradient = ctx.createLinearGradient(0, 0, width, 0)
+    gradient.addColorStop(0, "#a8baf5")
+    gradient.addColorStop(0.55, "#9fbcff")
+    gradient.addColorStop(1, "#dfe7ff")
+    ctx.fillStyle = gradient
+
+    for (let i = 0; i < bars; i += 1) {
+      let peak = 0
+      for (let j = 0; j < perBar; j += 1) peak = Math.max(peak, data[i * perBar + j])
+      // Смягчаем, иначе столбики дёргаются на каждом кадре.
+      level[i] = level[i] * 0.65 + (peak / 255) * 0.35
+      const barHeight = Math.max(3, level[i] * height)
+      ctx.fillRect(i * gap, (height - barHeight) / 2, gap * 0.55, barHeight)
+    }
+
+    frame.current = requestAnimationFrame(step)
+  }, [wave])
+
+  React.useEffect(() => {
+    cancelAnimationFrame(frame.current)
+
+    if (!playing || !wave.current) {
+      drawIdle()
+      return
+    }
+
+    drawWave()
+    return () => cancelAnimationFrame(frame.current)
+  }, [playing, drawIdle, drawWave, wave])
+
+  const ratio = duration ? current / duration : 0
+
+  return (
+    <div className={cn("mt-auto px-5 pb-5", className)}>
+      {/* Обложка: файл может не лежать на месте — рисуем градиентную заглушку. */}
+      <div className="player-cover">
+        {!coverFailed ? (
+          <Image
+            src={track.cover}
+            alt=""
+            width={296}
+            height={296}
+            unoptimized
+            onError={() => setCoverFailed(true)}
+          />
+        ) : (
+          <MusicIcon aria-hidden />
+        )}
+      </div>
+
+      <p className="player-title">{track.title}</p>
+      <p className="player-artist">{track.artist}</p>
+
+      <canvas
+        ref={canvasRef}
+        width={560}
+        height={40}
+        aria-hidden
+        className="mt-3 block h-10 w-full"
+      />
+
+      <div className="player-ctrl">
+        <button
+          type="button"
+          onClick={toggle}
+          aria-label={playing ? "Пауза" : "Слушать трек"}
+          className="play-big"
+        >
+          {playing ? <PauseIcon /> : <PlayIcon className="translate-x-px" />}
+        </button>
+      </div>
+
+      <div className="seekrow">
+        <span>{formatTime(current)}</span>
+        <Seekbar ratio={ratio} />
+        <span>{formatTime(duration)}</span>
+      </div>
+
+      <VolumeSlider wide />
+
+      {failed ? (
+        <p className="text-center text-[10px] text-[#7d8894]">
+          Браузер не смог запустить трек — попробуйте нажать ещё раз.
+        </p>
+      ) : (
+        /* Пока не запустили — мягкая подсказка, исчезающая после первого клика. */
+        !started ? (
+          <p className="text-center text-[10px] text-[#7d8894]">
+            Нажмите кнопку — трек зациклится сам.
+          </p>
+        ) : null
+      )}
+    </div>
   )
 }
