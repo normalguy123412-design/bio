@@ -1,19 +1,18 @@
 import type { Metadata } from "next"
-import { Caveat, Instrument_Serif, Martian_Mono } from "next/font/google"
-import { profile } from "@/lib/profile"
+import { Caveat, Instrument_Serif, Martian_Mono, Unbounded } from "next/font/google"
+
 import "./globals.css"
 
 /*
-  Суть сайта — ночь и машина. Три шрифта выстраивают всю сцену:
+  Шрифты страницы — четыре характера одной ночной сцены:
 
-  • Martian Mono — основной: машинописный, «терминальный», им набраны
-    подписи, абзацы и весь интерфейс. Есть кириллица.
-  • Instrument Serif — курсивный Serif с тонкими засечками: огромный ник
-    и заголовки разделов. Кириллицы у него нет, поэтому русские слова
-    уходят в Times New Roman (умышленный приём — контраст двух Serif),
-    латиница остаётся в Instrument.
-  • Caveat — рукописный, с кириллицей: приветствие на заставке и имя
-    трека в плеере.
+  • Martian Mono — основной:technical подача, числа, мелкие подписи.
+  • Instrument Serif — единственный курсив в наборе: ник, заголовки
+    разделов и пункты рельса ссылок. Отдаётся с двумя начертаниями, чтобы
+    не было рывка при подстановке.
+  • Caveat — рукописный: им пишется стеклянный лист «письмецо».
+  • Unbounded — широкий гротеск: брендовая строка и название трека, там,
+    где нужен плотный акцент.
 */
 const martian = Martian_Mono({
   variable: "--font-martian",
@@ -35,30 +34,30 @@ const caveat = Caveat({
   display: "swap",
 })
 
+const unbounded = Unbounded({
+  variable: "--font-unbounded",
+  subsets: ["latin", "cyrillic"],
+  weight: ["500", "600"],
+  display: "swap",
+})
+
 export const metadata: Metadata = {
-  title: profile.name,
-  description:
-    "Фронтенд-разработчик и фриланс: интерфейсы на React и TypeScript, вёрстка, анимации, адаптив. Сайты под ключ.",
-  openGraph: {
-    title: profile.name,
-    description: "Фронтенд-разработчик и фриланс.",
-    type: "profile",
-    locale: "ru_RU",
-  },
+  title: "NiceGuy",
+  description: "NiceGuy — junior-разработчик интерфейсов. Личная страница-сцена с музыкой.",
 }
 
-/**
- * Тёмная тема задана прямо на html: страница одноцветная, и отдельный
- * переключатель ей не нужен. Класс `.dark` включает ночные токены из
- * globals.css.
- */
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode
+}>) {
   return (
-    <html
-      lang="ru"
-      className={`dark ${martian.variable} ${display.variable} ${caveat.variable} h-full antialiased`}
-    >
-      <body className="flex min-h-full flex-col">{children}</body>
+    <html lang="ru">
+      <body
+        className={`${martian.className} ${martian.variable} ${display.variable} ${caveat.variable} ${unbounded.variable} antialiased`}
+      >
+        {children}
+      </body>
     </html>
   )
 }

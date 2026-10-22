@@ -1,12 +1,9 @@
-import { SiteShell } from "@/components/site-shell"
+import { Scene } from "@/components/scene/scene"
 
 /**
- * Одностраничная страница био.
- *
- * Разметки здесь почти нет: всё рисует SiteShell. Он держит открытым ровно
- * один отдел и переключает их кнопками дока, поэтому страница не
- * прокручивается — отделы закрытые.
+ * Страница — одна ночная сцена: заставка, погода, ник с водой и
+ * стеклянные разделы. Вся сборка живёт в components/scene.
  */
-export default function Home() {
-  return <SiteShell />
+export default function Page() {
+  return <Scene />
 }

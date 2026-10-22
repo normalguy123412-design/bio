@@ -190,17 +190,12 @@ export const views = {
 /** Трек для плеера. Сам файл лежит в public/audio. */
 export const track = {
   /**
-   * Путь собирается вручную, а не через next/image: тот умеет префикс
-   * страницы подставлять сам, а у <audio> такой возможности нет. На
-   * localhost префикс пустой, на GitHub Pages — /bio.
+   * Файл лежит в корне public/. Путь собирается вручную, а не через
+   * next/image: тот умеет префикс страницы подставлять сам, а у <audio>
+   * такой возможности нет. На localhost префикс пустой, на GitHub
+   * Pages — /bio.
    */
-  src: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/audio/track.mp3`,
+  src: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/track.mp3`,
   title: "Вечно молодой",
   artist: "OLEHAN",
-  /**
-   * Обложка. Файла пока нет — плеер рисует градиентную заглушку. Положите
-   * картинку в public/audio/cover.jpg (квадрат, от 512×512) и путь встанет
-   * сюда.
-   */
-  cover: `${process.env.NEXT_PUBLIC_BASE_PATH ?? ""}/audio/cover.jpg`,
 } as const
